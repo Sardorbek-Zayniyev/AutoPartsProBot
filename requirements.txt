@@ -19,4 +19,5 @@ pydantic_core==2.27.2
 python-decouple==3.8
 sqlparse==0.5.3
 typing_extensions==4.12.2
+
 yarl==1.18.3

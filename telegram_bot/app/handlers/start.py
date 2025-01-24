@@ -4,7 +4,7 @@ from telegram_app.models import User
 from telegram_bot.app.handlers.superadmin import superadmin_controls_keyboard
 from handlers.auth import register_keyboard
 from handlers.utils import get_user_from_db
-
+from handlers.admin import main_controls_keyboard
 # Create a router for the start handlers
 start_router = Router()
 
@@ -21,6 +21,11 @@ async def start(message: types.Message):
         await message.reply(
             "Xush kelibsiz, Super Admin!\nQuyidagilardan birini tanlang:",
             reply_markup=superadmin_controls_keyboard
+        )
+    elif existing_user and existing_user.role == 'Admin':
+        await message.reply(
+            "Xush kelibsiz, Admin!\nQuyidagilardan birini tanlang:",
+            reply_markup=main_controls_keyboard  # Admin tugmalarini ko'rsatish
         )
     # Registered user logic
     elif existing_user:

@@ -13,7 +13,8 @@ register_keyboard = ReplyKeyboardMarkup(
         [KeyboardButton(text="📞 Telefon raqamini yuborish",
                         request_contact=True)],
     ],
-    resize_keyboard=True
+    resize_keyboard=True,
+    one_time_keyboard=True
 )
 
 # @auth_router.message(Command(commands=["register"]))
@@ -47,7 +48,7 @@ async def handle_contact(message: types.Message):
     """
     Handles contact input during registration.
     """
-    
+
     await register_user(message)
 
 
