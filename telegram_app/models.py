@@ -34,7 +34,7 @@ class Category(models.Model):
 
     def save(self, *args, **kwargs):
         if self.name:
-            self.name = self.name.capitalize()
+            self.name = self.name.title()
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -54,11 +54,13 @@ class CarBrand(models.Model):
 
 
 class CarModel(models.Model):
-    brand = models.ForeignKey(CarBrand, on_delete=models.CASCADE, related_name="models")
+    brand = models.ForeignKey(
+        CarBrand, on_delete=models.CASCADE, related_name="models")
     name = models.CharField(max_length=255)
 
     class Meta:
-        unique_together = ('brand', 'name')  # Ensures unique model names per brand
+        # Ensures unique model names per brand
+        unique_together = ('brand', 'name')
 
     def save(self, *args, **kwargs):
         if self.name:
@@ -66,17 +68,20 @@ class CarModel(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.name} ({self.brand.name})"
+        return f"{self.name}"
 
 
 class Product(models.Model):
-    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name="products")
-    car_brand = models.ForeignKey(CarBrand, on_delete=models.CASCADE, related_name="products")
-    car_model = models.ForeignKey(CarModel, on_delete=models.CASCADE, related_name="products")
+    category = models.ForeignKey(
+        Category, on_delete=models.CASCADE, related_name="products")
+    car_brand = models.ForeignKey(
+        CarBrand, on_delete=models.CASCADE, related_name="products")
+    car_model = models.ForeignKey(
+        CarModel, on_delete=models.CASCADE, related_name="products")
     name = models.CharField(max_length=255)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     available = models.BooleanField(default=True)
-    photos = models.ImageField(
+    photo = models.ImageField(
         upload_to="product_photos/", blank=True, null=True)
     description = models.TextField(blank=True, null=True)
 
@@ -86,4 +91,4 @@ class Product(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.name} - {self.car_brand.name} {self.car_model.name}"
+        return f"{self.name}"
