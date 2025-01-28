@@ -63,7 +63,7 @@ class ProductFSM(StatesGroup):
     waiting_product_delete = State()
 
 # Buttons
-MAIN_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
+ADMIN_MAIN_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📂 Kategoriya"), KeyboardButton(text="📦 Mahsulot")],
     ],
@@ -107,7 +107,7 @@ MAIN_CONTROLS_RESPONSES = {
     },
     "⬅ Bosh menu": {
         "text": "Asosiy menuga xush kelibsiz!",
-        "keyboard": MAIN_CONTROLS_KEYBOARD,
+        "keyboard": ADMIN_MAIN_CONTROLS_KEYBOARD,
         "clear_state": True 
     }
 }
@@ -162,7 +162,7 @@ async def get_category(message: Message, state: FSMContext):
     Yangi kategoriya qo'shish jarayonini boshlaydi.
     """
     await message.answer("Yangi kategoriya nomini kiriting:")
-    await state.set_state(state, ProductFSM.waiting_save_get_category)
+    await state.set_state(ProductFSM.waiting_save_get_category)
 
 @admin_router.message(StateFilter(ProductFSM.waiting_save_get_category))
 async def save_get_category(message: Message, state: FSMContext):

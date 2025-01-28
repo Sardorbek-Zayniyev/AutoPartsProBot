@@ -55,7 +55,7 @@ class CarModelAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'car_brand', 'car_model', 'price', 'available')
+    list_display = ('id','name', 'category', 'car_brand', 'car_model', 'price', 'available')
     list_filter = ('category', 'car_brand', 'available')
     search_fields = ('name', 'car_brand__name', 'car_model__name')
     ordering = ('category', 'car_brand', 'car_model')
