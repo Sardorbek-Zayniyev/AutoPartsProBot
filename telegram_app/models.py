@@ -23,7 +23,7 @@ class User(models.Model):
     )
 
     def __str__(self):
-        return f"{self.full_name} {self.role}"
+        return f"{self.full_name}"
 
 
 class Category(models.Model):
@@ -121,6 +121,12 @@ class CartItem(models.Model):
     quantity = models.PositiveIntegerField(default=1)
     discount = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)  #
     
+    def get_quantity(self):
+        return self.quantity
+    
+    def get_product(self):
+        return self.product
+
     def subtotal(self):
         """Calculate the subtotal price for this cart item."""
         discounted_price = self.product.price * (1 - self.discount / Decimal(100))

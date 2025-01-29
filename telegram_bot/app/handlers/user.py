@@ -6,7 +6,7 @@ from django.db.models import Q
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
-
+from aiogram.exceptions import TelegramBadRequest
 from django.db import IntegrityError
 from aiogram.types import FSInputFile
 from aiogram.filters.state import StateFilter
@@ -16,7 +16,6 @@ from telegram_app.models import Category, CarBrand, CarModel, Product, Cart, Car
 
 # Create a router for admin handlers
 user_router = Router()
-cart_router = Router()
 
 class SearchFSM(StatesGroup):
     waiting_category_search = State() 
@@ -29,7 +28,6 @@ class SearchFSM(StatesGroup):
     
 class CartFSM(StatesGroup):
     waiting_viewing_cart = State()
-    waiting_removing_from_cart = State()
 
 
 USER_MAIN_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
@@ -72,16 +70,15 @@ ORDERS_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     one_time_keyboard=True
 )
 
-CART_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="👁️ Savatni ko'rish"), KeyboardButton(text="🗑️ Savatni tozalash")],
-        # [KeyboardButton(text="✅ Buyurtma berish")],
-        [KeyboardButton(text="⬅ Bosh menu")],
-    ],
-    resize_keyboard=True,
-    one_time_keyboard=True
-)
-# [KeyboardButton(text="👁️ Savatni ko'rish")] ichiga kirgandan kn mahsulotni olib tashlash
+# CART_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
+#     keyboard=[
+#         [KeyboardButton(text="👁️ Savatni ko'rish")],
+#         # [KeyboardButton(text="✅ Buyurtma berish")],
+#         [KeyboardButton(text="⬅ Bosh menu")],
+#     ],
+#     resize_keyboard=True,
+#     one_time_keyboard=True
+# )
 
 # Main control handlers
 MAIN_CONTROLS_RESPONSES = {
@@ -97,10 +94,10 @@ MAIN_CONTROLS_RESPONSES = {
         "text": "Buyurtmalar boshqaruvi uchun tugmalar:",
         "keyboard": ORDERS_CONTROLS_KEYBOARD
     },
-     "🛒 Savat": {
-        "text": "Savat boshqaruvi uchun tugmalar:",
-        "keyboard": CART_CONTROLS_KEYBOARD
-    },
+    #  "🛒 Savat": {
+    #     "text": "Savat boshqaruvi uchun tugmalar:",
+    #     "keyboard": None
+    # },
     "⬅ Bosh menu": {
         "text": "Asosiy menuga xush kelibsiz!",
         "keyboard": USER_MAIN_CONTROLS_KEYBOARD,
@@ -150,6 +147,22 @@ async def search_controls_handler(message: Message, state: FSMContext):
         await state.set_state(next_state)
     await handler_function(message, state)
 
+@user_router.message(lambda message: message.text in ["🛒 Savat"])
+async def cart_controls_handler(message: Message, state: FSMContext):
+    """
+    Handle cart control actions (view cart, clear cart)
+    """
+    user_id = message.from_user.id  # Get the user's Telegram ID
+    cart = await sync_to_async(Cart.objects.filter)(user_id=user_id)
+    
+    actions = {
+        "🛒 Savat": (CartFSM.waiting_viewing_cart ,view_cart),
+    }
+    next_state, handler_function = actions[message.text]
+    if next_state:
+        await state.set_state(next_state)
+    await handler_function(message, state)
+
 
 
 #search by category
@@ -173,7 +186,7 @@ async def category_search(message: Message, state: FSMContext):
 @user_router.callback_query(lambda c: c.data.startswith('category:'))
 async def process_category_callback(callback_query: CallbackQuery, state: FSMContext):
     category_id = int(callback_query.data.split(':')[1])
-    products = await sync_to_async(list)(Product.objects.filter(category_id=category_id))  # No need to order by ID here
+    products = await sync_to_async(list)(Product.objects.filter(category_id=category_id))  
     
     if not products:
         await callback_query.message.answer("Ushbu kategoriyada mahsulotlar yo'q.")
@@ -207,23 +220,6 @@ async def process_category_page_callback(callback_query: CallbackQuery, state: F
     await display_page(page_num, callback_query, products_with_numbers, category_id, total_pages, products_per_page)
     await callback_query.answer()
 
-@user_router.callback_query(lambda c: c.data.startswith('category:'))
-async def process_category_callback(callback_query: CallbackQuery, state: FSMContext):
-    category_id = int(callback_query.data.split(':')[1])
-    products = await sync_to_async(list)(Product.objects.filter(category_id=category_id)[:10])
-    
-    if not products:
-        await callback_query.message.answer("Ushbu kategoriyada mahsulotlar yo'q.")
-        return
-
-    product_buttons = []
-    for i, product in enumerate(products):
-      product_buttons.append([InlineKeyboardButton(text=str(i+1), callback_data=f"product:{product.id}")])
-    
-    product_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons)
-    await callback_query.message.answer("Mahsulotlar ro'yxati:", reply_markup=product_keyboard)
-    await callback_query.answer()
-
 @user_router.callback_query(lambda c: c.data.startswith('product:'))
 async def process_product_callback(callback_query: CallbackQuery, state: FSMContext):
     product_id = int(callback_query.data.split(':')[1])
@@ -231,13 +227,13 @@ async def process_product_callback(callback_query: CallbackQuery, state: FSMCont
     product_info = await format_product_info(product)
 
     user = await get_user_from_db(callback_query.from_user.id)
-    cart, created = await sync_to_async(Cart.objects.get_or_create)(user=user)
-    cart_item, item_created = await sync_to_async(CartItem.objects.get_or_create)(cart=cart, product=product)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+    cart_item = await sync_to_async(CartItem.objects.filter(cart=cart, product=product).first)()
 
     if product.photo and os.path.exists(product.photo.path):
         try:
             input_file = FSInputFile(product.photo.path, filename=os.path.basename(product.photo.path))
-            await callback_query.message.answer_photo(input_file, caption=product_info)
+            await callback_query.message.answer_photo(input_file, caption=product_info, reply_markup=(await cart_item_buttons(product_id, cart_item)))
         except Exception as e:
             await callback_query.message.answer(f"Mahsulot rasmi yuklanishda xatolik yuz berdi.\n\n{product_info}")
             print(f"Error loading photo: {e}")
@@ -407,5 +403,252 @@ async def car_model_search(message: Message, state: FSMContext):
     current_page = 1
 
     await display_page(current_page, message, products_with_numbers, None, total_pages, products_per_page)
+
+#Cart part
+@sync_to_async
+def get_total_price(cart):
+    return cart.total_price()
+
+@sync_to_async
+def get_quantity(cart_item):
+    return cart_item.get_quantity()
+
+@user_router.message(StateFilter(CartFSM.waiting_viewing_cart))
+async def view_cart( message: Message, state: FSMContext):
+    
+    user = await get_user_from_db(message.from_user.id)
+    if not user:
+        await message.answer("Iltimos, avval ro'yxatdan o'ting.")
+        return
+    
+    cart, _ = await sync_to_async(Cart.objects.get_or_create)(user=user, is_active=True)
+    cart_items = await sync_to_async(list)(cart.items.all())
+    
+    if not cart_items:
+        await message.answer("Savatingiz bo'sh.")
+        return
+
+    cart_text = "Sizning savatingiz:\n\n"
+    total_price = 0
+
+    for index, item in enumerate(cart_items, start=1): 
+        product = await sync_to_async(lambda: item.product)()
+        subtotal = item.subtotal()
+        total_price += subtotal
+        cart_text += (f"{index}. {product.name}: {product.price} x {item.quantity} = {subtotal} so'm\n")
+
+    
+    cart_text += f"\nJami: {total_price} so'm"
+    await message.answer(cart_text, reply_markup=(await cart_buttons(cart)))
+
+#Cart
+@user_router.callback_query(lambda c: c.data.startswith('increase_item_in_cart:'))
+async def increase_item_in_cart(callback_query: CallbackQuery):
+    item_id = int(callback_query.data.split(':')[1])
+    user = await get_user_from_db(callback_query.from_user.id)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+    cart_items = await sync_to_async(list)(cart.items.all())
+    item = await sync_to_async(CartItem.objects.filter(id=item_id, cart=cart).first)()
+
+    if not item:
+            await callback_query.answer("Mahsulot mavjud emas")
+    
+
+    if item:
+        item.quantity +=1
+        await sync_to_async(item.save)()
+    
+    await callback_query.answer(f"Mahsulot savatga qo'shildi")
+
+    try:
+        # Try to edit the message's reply markup
+        new_markup = await cart_buttons(cart)
+    
+        # If reply_markup is different, proceed with editing
+        if callback_query.message.reply_markup != new_markup:
+            await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+            await callback_query.answer("Mahsulot savatga qo'shildi")
+        else:
+            # If the reply markup is the same, still answer the callback
+            await callback_query.answer("Savat yangilandi, ammo hech narsa o'zgarmadi.")
+        
+    except TelegramBadRequest as e:
+        # Catch the exception if the message is not modified
+        await callback_query.answer("Savatda o'zgarish yo'q.")
+
+@user_router.callback_query(lambda c: c.data.startswith('decrease_item_in_cart:'))
+async def decrease_item_in_cart(callback_query: CallbackQuery):
+    item_id = int(callback_query.data.split(':')[1])
+    user = await get_user_from_db(callback_query.from_user.id)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+    cart_items = await sync_to_async(list)(cart.items.all())
+    item = await sync_to_async(CartItem.objects.filter(id=item_id, cart=cart).first)()
+
+    if not item:
+            await callback_query.answer("Mahsulot mavjud emas")
+    
+    if item:
+        if item.quantity > 1:
+            item.quantity -= 1
+            await sync_to_async(item.save)()
+            await callback_query.answer("Mahsulot kamaytirildi")
+        else:
+            await sync_to_async(item.delete)()
+            item = None
+            await callback_query.answer("Mahsulot savatdan o'chirildi")
+        try:
+            # Try to edit the message's reply markup
+            new_markup = await cart_buttons(cart)
+            if callback_query.message.reply_markup != new_markup:
+                await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+                await callback_query.answer("Mahsulot savatdan o'chirildi")
+            else:
+                # If the reply markup is the same, still answer the callback
+                await callback_query.answer("Savat yangilandi, ammo hech narsa o'zgarmadi.")
+        
+        except TelegramBadRequest as e:
+            # Catch the exception if the message is not modified
+            await callback_query.answer("Savatda o'zgarish yo'q.")
+    
+async def cart_buttons(cart):
+    cart_items = await sync_to_async(list)(cart.items.all()) 
+    if cart_items:
+        cart_buttons = [
+            [
+                InlineKeyboardButton(text=f"{await sync_to_async(item.get_product)()}", callback_data="noop"),
+                InlineKeyboardButton(text=f"➖", callback_data=f"decrease_item_in_cart:{item.id}"),
+                InlineKeyboardButton(text=f"🛒 {item.quantity}", callback_data="noop"),
+                InlineKeyboardButton(text=f"➕", callback_data=f"increase_item_in_cart:{item.id}")
+            ] for item in cart_items
+        ] + [[InlineKeyboardButton(text="🗑️ Savatni tozalash", callback_data="clear_cart")]]
+        return InlineKeyboardMarkup(inline_keyboard=cart_buttons)
+    else:
+        return None   
+
+@user_router.callback_query(lambda c: c.data == "clear_cart")
+async def clear_cart_handler(callback_query: CallbackQuery, state: FSMContext):
+    user = await get_user_from_db(callback_query.from_user.id)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+    if cart:
+        await sync_to_async(cart.items.all().delete)()
+        await callback_query.answer("Savat tozalandi")
+
+        try:
+            # Try to edit the message
+            await callback_query.message.edit_text("Savatingiz bo'sh.")
+            await callback_query.message.edit_reply_markup(reply_markup=None)
+        except TelegramBadRequest as e:
+            # If the message is not modified, answer the callback with an appropriate message
+            await callback_query.answer("Savat allaqachon bo'sh.")
+
+#Cart for each products
+@user_router.callback_query(lambda c: c.data.startswith('increase_item:'))
+async def increase_item(callback_query: CallbackQuery):
+    product_id = int(callback_query.data.split(':')[1])
+    product = await sync_to_async(Product.objects.get)(id=product_id)
+    user = await get_user_from_db(callback_query.from_user.id)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+
+    if not cart:
+        cart = await sync_to_async(Cart.objects.create)(user=user)
+    
+    cart_item, created = await sync_to_async(CartItem.objects.get_or_create)(cart=cart, product=product, defaults={'quantity': 1})
+    
+    if not created:
+        cart_item.quantity +=1
+        await sync_to_async(cart_item.save)()
+    
+    await callback_query.answer(f"Mahsulot savatga qo'shildi")
+
+    try:
+        # Try to edit the message's reply markup
+        new_markup = await cart_item_buttons(product_id, cart_item)
+    
+        # If reply_markup is different, proceed with editing
+        if callback_query.message.reply_markup != new_markup:
+            await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+            await callback_query.answer("Mahsulot savatga qo'shildi")
+        else:
+            # If the reply markup is the same, still answer the callback
+            await callback_query.answer("Savat yangilandi, ammo hech narsa o'zgarmadi.")
+        
+    except TelegramBadRequest as e:
+        # Catch the exception if the message is not modified
+        await callback_query.answer("Savatda o'zgarish yo'q.")
+
+@user_router.callback_query(lambda c: c.data.startswith('decrease_item:'))
+async def decrease_item(callback_query: CallbackQuery):
+    product_id = int(callback_query.data.split(':')[1])
+    product = await sync_to_async(Product.objects.get)(id=product_id)
+    user = await get_user_from_db(callback_query.from_user.id)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+    cart_item = await sync_to_async(CartItem.objects.filter(cart=cart, product=product).first)()
+
+    if cart_item:
+        if cart_item.quantity > 1:
+            cart_item.quantity -= 1
+            await sync_to_async(cart_item.save)()
+            await callback_query.answer("Mahsulot kamaytirildi")
+        else:
+            await sync_to_async(cart_item.delete)()
+            cart_item = None
+            await callback_query.answer("Mahsulot savatdan o'chirildi")
+        try:
+            # Try to edit the message's reply markup
+            new_markup = await cart_item_buttons(product_id, cart_item)
+            if callback_query.message.reply_markup != new_markup:
+                await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+                await callback_query.answer("Mahsulot savatdan o'chirildi")
+            else:
+                # If the reply markup is the same, still answer the callback
+                await callback_query.answer("Savat yangilandi, ammo hech narsa o'zgarmadi.")
+        
+        except TelegramBadRequest as e:
+            # Catch the exception if the message is not modified
+            await callback_query.answer("Savatda o'zgarish yo'q.")
+
+async def cart_item_buttons(product_id, cart_item=None):
+    cart_item_buttons = []
+    if not cart_item:
+        cart_item_buttons = [[InlineKeyboardButton(text="Savatga qo'shish", callback_data=f"increase_item:{product_id}")]]
+    else:
+        quantity = await get_quantity(cart_item)
+        cart_item_buttons.append(
+      [InlineKeyboardButton(text=f"➖", callback_data=f"decrease_item:{product_id}"),
+       InlineKeyboardButton(text=f"🛒 {quantity} ta", callback_data="noop"),
+       InlineKeyboardButton(text="➕", callback_data=f"increase_item:{product_id}")
+       ])
+        cart_item_buttons.append([InlineKeyboardButton(text="🗑️ Savatni tozalash", callback_data=f"inner_clear_cart:{product_id}")])
+
+    return InlineKeyboardMarkup(inline_keyboard=cart_item_buttons)
+
+@user_router.callback_query(lambda c: c.data.startswith("inner_clear_cart"))
+async def inner_clear_cart(callback_query: CallbackQuery):
+    product_id = int(callback_query.data.split(':')[1])
+    product = await sync_to_async(Product.objects.get)(id=product_id)
+    user = await get_user_from_db(callback_query.from_user.id)
+    cart = await sync_to_async(Cart.objects.filter(user=user).first)()
+    cart_item = await sync_to_async(CartItem.objects.filter(cart=cart, product=product).first)()
+
+    if not user:
+        await callback_query.answer("Iltimos, avval ro'yxatdan o'ting.")
+        return
+    
+    if cart_item:
+         await sync_to_async(cart_item.delete)()
+         cart_item = None
+         await callback_query.answer("Mahsulot savatdan o'chirildi")
+    try:
+       # Try to edit the message's reply markup
+       new_markup = await cart_item_buttons(product_id, cart_item)
+       if callback_query.message.reply_markup != new_markup:
+           await callback_query.message.edit_reply_markup(reply_markup=new_markup)
+           await callback_query.answer("Mahsulot savatdan o'chirildi")
+       else:
+           # If the reply markup is the same, still answer the callback
+           await callback_query.answer("Savat yangilandi, ammo hech narsa o'zgarmadi.")
+    except TelegramBadRequest as e:
+       # Catch the exception if the message is not modified
+       await callback_query.answer("Savatda o'zgarish yo'q.")
 
 
