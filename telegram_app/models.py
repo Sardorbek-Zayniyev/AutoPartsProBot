@@ -136,23 +136,33 @@ class CartItem(models.Model):
         return f"{self.product.name} (x{self.quantity}) in Cart {self.cart.id}"
 
 
-class Wishlist(models.Model):
-    """Model representing a user's wishlist."""
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='wishlist')
-    products = models.ManyToManyField(Product, related_name='wishlisted_by', blank=True)
+class SavedItemList(models.Model):
+    """Model for a list of saved items for later purchase."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_item_lists')
+    name = models.CharField(max_length=255, default="Wishlist")  
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return f"{self.user.username}'s Wishlist"
+        return f"{self.name}"
+
+    class Meta:
+        ordering = ['-created_at']
+        unique_together = ('user', 'name')
 
 
 class SavedItem(models.Model):
-    """Model for saved items for later purchase."""
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='saved_items')
+    """Model for individual saved items in a saved item list."""
+    saved_item_list = models.ForeignKey(SavedItemList, on_delete=models.CASCADE, related_name='saved_items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='saved_by')
     added_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        ordering = ['-added_at']
+        unique_together = ('saved_item_list', 'product')
+
     def __str__(self):
-        return f"{self.product.name} saved by {self.user.username}"
+        return f"{self.product.name}"
+
 
 
 class DiscountCode(models.Model):

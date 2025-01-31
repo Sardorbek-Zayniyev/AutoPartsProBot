@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Category, Product, User, CarBrand, CarModel, Cart, CartItem, Wishlist, DiscountCode, Order, SavedItem, AppliedDiscount
+from .models import Category, Product, User, CarBrand, CarModel, Cart, CartItem, DiscountCode, Order, SavedItemList, SavedItem, AppliedDiscount
 from django.db import transaction
 
 
@@ -20,6 +20,10 @@ class CartItemInline(admin.TabularInline):
     extra = 0
     readonly_fields = ('subtotal',)
 
+class SavedItemInline(admin.TabularInline):
+    model = SavedItem
+    extra = 0  
+    readonly_fields = ('product', 'added_at')  
 
 class AppliedDiscountInline(admin.TabularInline):
     model = AppliedDiscount
@@ -66,7 +70,7 @@ class CarModelAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('id','name', 'category', 'car_brand', 'car_model', 'price', 'available')
+    list_display = ('name', 'category', 'car_brand', 'car_model', 'price', 'available')
     list_filter = ('category', 'car_brand', 'available')
     search_fields = ('name', 'car_brand__name', 'car_model__name')
     ordering = ('category', 'car_brand', 'car_model')
@@ -117,18 +121,16 @@ class CartItemAdmin(admin.ModelAdmin):
     list_filter = ('cart', 'product')
     search_fields = ('cart__id', 'product__name')
 
-
-@admin.register(Wishlist)
-class WishlistAdmin(admin.ModelAdmin):
-    list_display = ('user',)
-    search_fields = ('user__full_name',)
-
+@admin.register(SavedItemList)
+class SavedItemListAdmin(admin.ModelAdmin):
+    list_display = ('user', 'name', 'created_at')  
+    search_fields = ('user__username', 'name')  
+    inlines = [SavedItemInline] 
 
 @admin.register(SavedItem)
 class SavedItemAdmin(admin.ModelAdmin):
-    list_display = ('user', 'product', 'added_at')
-    search_fields = ('user__full_name', 'product__name')
-
+    list_display = ('product', 'saved_item_list', 'added_at') 
+    list_filter = ('saved_item_list__user', 'product') 
 
 @admin.register(DiscountCode)
 class DiscountCodeAdmin(admin.ModelAdmin):
