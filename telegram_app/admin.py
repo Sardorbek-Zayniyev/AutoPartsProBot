@@ -1,13 +1,11 @@
 from django.contrib import admin
-from .models import Category, Product, User, CarBrand, CarModel, Cart, CartItem, DiscountCode, Order, SavedItemList, SavedItem, AppliedDiscount
+from .models import Category, Product, User, CarBrand, CarModel, Cart, CartItem, SavedItemList, SavedItem, Discount, Promocode, AppliedPromocode, Order, OrderItem
 from django.db import transaction
-
 
 class ProductInline(admin.TabularInline):
     model = Product
-    fields = ('name', 'car_brand', 'car_model', 'price', 'available')
+    fields = ('name', 'car_brand', 'car_model', 'price', 'available', 'stock')
     extra = 0
-
 
 class CarModelInline(admin.TabularInline):
     model = CarModel
@@ -16,7 +14,7 @@ class CarModelInline(admin.TabularInline):
 
 class CartItemInline(admin.TabularInline):
     model = CartItem
-    fields = ('product', 'quantity', 'discount', 'subtotal')
+    fields = ('product', 'quantity', 'subtotal')
     extra = 0
     readonly_fields = ('subtotal',)
 
@@ -25,10 +23,17 @@ class SavedItemInline(admin.TabularInline):
     extra = 0  
     readonly_fields = ('product', 'added_at')  
 
-class AppliedDiscountInline(admin.TabularInline):
-    model = AppliedDiscount
-    fields = ('discount_code',)
+class AppliedPromocodeInline(admin.TabularInline):
+    model = AppliedPromocode
+    fields = ('promocode',)
     extra = 0
+
+class OrderItemInline(admin.TabularInline):
+    model = OrderItem
+    fields = ('product', 'quantity', 'price', 'subtotal')
+    extra = 0   
+    readonly_fields = ('subtotal',)
+
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
@@ -37,13 +42,11 @@ class UserAdmin(admin.ModelAdmin):
     search_fields = ('full_name', 'telegram_id', 'phone_number', 'role')
     ordering = ('-role',)
 
-
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
     list_display = ('name',)
     search_fields = ('name',)
     inlines = [ProductInline]
-
 
 @admin.register(CarBrand)
 class CarBrandAdmin(admin.ModelAdmin):
@@ -52,12 +55,10 @@ class CarBrandAdmin(admin.ModelAdmin):
     ordering = ('name',)
     inlines = [CarModelInline]
 
-
 class ProductByCarModelInline(admin.TabularInline):
     model = Product
     fields = ('name', 'category', 'price', 'available')
     extra = 0
-
 
 @admin.register(CarModel)
 class CarModelAdmin(admin.ModelAdmin):
@@ -67,20 +68,19 @@ class CarModelAdmin(admin.ModelAdmin):
     ordering = ('brand', 'name')
     inlines = [ProductByCarModelInline]
 
-
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'car_brand', 'car_model', 'price', 'available')
+    list_display = ('name', 'category', 'car_brand', 'car_model', 'price', 'available', 'stock', 'quality', 'reserved_stock')
     list_filter = ('category', 'car_brand', 'available')
     search_fields = ('name', 'car_brand__name', 'car_model__name')
     ordering = ('category', 'car_brand', 'car_model')
     readonly_fields = ('id',)
     fieldsets = (
         ('General Information', {
-            'fields': ('category', 'car_brand', 'car_model', 'name', 'description'),
+            'fields': ('category', 'car_brand', 'car_model', 'name', 'description', 'quality',),
         }),
         ('Pricing and Availability', {
-            'fields': ('price', 'available'),
+            'fields': ('price', 'available', 'stock', 'reserved_stock'),
         }),
         ('Images', {
             'fields': ('photo',),
@@ -105,21 +105,20 @@ class ProductAdmin(admin.ModelAdmin):
             # Asosiy saqlash funksiyasini chaqiramiz
             super().save_model(request, obj, form, change)
 
-
 @admin.register(Cart)
 class CartAdmin(admin.ModelAdmin):
     list_display = ('user', 'is_active', 'total_price', 'created_at', 'updated_at')
     list_filter = ('is_active', 'user')
     search_fields = ('user__full_name', 'id')
-    inlines = [CartItemInline, AppliedDiscountInline]
-
+    inlines = [CartItemInline, AppliedPromocodeInline]
 
 @admin.register(CartItem)
 class CartItemAdmin(admin.ModelAdmin):
-    list_display = ('product', 'cart', 'quantity', 'discount', 'subtotal')
+    list_display = ('product', 'cart', 'quantity', 'subtotal')
     readonly_fields = ('subtotal',)
     list_filter = ('cart', 'product')
     search_fields = ('cart__id', 'product__name')
+    
 
 @admin.register(SavedItemList)
 class SavedItemListAdmin(admin.ModelAdmin):
@@ -132,23 +131,41 @@ class SavedItemAdmin(admin.ModelAdmin):
     list_display = ('product', 'saved_item_list', 'added_at') 
     list_filter = ('saved_item_list__user', 'product') 
 
-@admin.register(DiscountCode)
-class DiscountCodeAdmin(admin.ModelAdmin):
-    list_display = ('code', 'discount_percentage', 'valid_from', 'valid_until', 'is_active')
+@admin.register(Discount)
+class DiscountAdmin(admin.ModelAdmin):
+    def display_products(self, obj):
+        return ", ".join([product.name for product in obj.products.all()])
+    
+    display_products.short_description = 'Products' 
+
+    list_display = ('display_products', 'percentage', 'start_date', 'end_date', 'is_active')
+    list_filter = ('is_active',)
+    search_fields = ('products__name',) 
+    ordering = ('-start_date',)
+
+@admin.register(Promocode)
+class PromocodeAdmin(admin.ModelAdmin):
+    list_display = ('code', 'discount_percentage', 'valid_from', 'valid_until', 'is_active', 'usage_limit')
     list_filter = ('is_active',)
     search_fields = ('code',)
+    ordering = ('-valid_from',)
 
-
-@admin.register(AppliedDiscount)
-class AppliedDiscountAdmin(admin.ModelAdmin):
-    list_display = ('cart', 'discount_code')
-    list_filter = ('discount_code', 'cart')
-    search_fields = ('cart__id', 'discount_code__code')
-
+@admin.register(AppliedPromocode)
+class AppliedPromocodeAdmin(admin.ModelAdmin):
+    list_display = ('cart', 'promocode', 'applied_at')
+    search_fields = ('cart__id', 'promocode__code')
 
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('user', 'status', 'total_price', 'created_at')
-    list_filter = ('status', 'user')
-    search_fields = ('user__full_name', 'id')
-    readonly_fields = ('total_price',)
+    list_display = ('order_id', 'user', 'status', 'total_price', 'payment_status', 'created_at')
+    list_filter = ('status', 'payment_status')
+    search_fields = ('order_id', 'user__full_name')
+    ordering = ('-created_at',)
+    # inlines = [OrderItemInline]
+
+@admin.register(OrderItem)
+class OrderItemAdmin(admin.ModelAdmin):
+    list_display = ('product', 'order', 'quantity', 'price', 'subtotal')
+    readonly_fields = ('subtotal',)
+    list_filter = ('order', 'product')
+    search_fields = ('order__id', 'product__name')

@@ -41,6 +41,9 @@ class ProductFSM(StatesGroup):
     waiting_for_part_name = State()
     waiting_for_price = State()
     waiting_for_availability = State()
+    waiting_for_stock = State()
+    waiting_for_show_quality = State()
+    waiting_for_set_quality = State()
     waiting_for_photo = State()
     waiting_for_description = State()
 
@@ -54,6 +57,8 @@ class ProductFSM(StatesGroup):
     waiting_product_partname_edit = State()
     waiting_product_price_edit = State()
     waiting_product_availability_edit = State()
+    waiting_product_stock_edit = State()
+    waiting_product_quality_edit = State()
     waiting_product_photo_edit = State()
     waiting_product_description_edit = State()
 
@@ -337,6 +342,29 @@ async def show_car_models_list(message: Message):
     )
     return car_model_keyboard
 
+async def show_quality_list():
+    """
+    Mahsulot sifatini tanlash uchun klaviatura.
+    """
+    quality_choices = {
+        "new": "🆕 Yangi",
+        "renewed": "🔄 Yangilangan",
+        "excellent": "✨ Zo'r",
+        "good": "👍 Yaxshi",
+        "acceptable": "✅ Qoniqarli"
+    }
+
+    buttons = [KeyboardButton(text=value) for value in quality_choices.values()]
+    back_button = KeyboardButton(text="⬅ Ortga")
+
+    # Sifat tanlash tugmalarini ikki ustunli formatda chiqarish
+    quality_keyboard = ReplyKeyboardMarkup(
+        keyboard=[buttons[i:i + 2] for i in range(0, len(buttons), 2)] + [[back_button]],
+        resize_keyboard=True
+    )
+
+    return quality_keyboard
+
 # Adding
 @admin_router.message(lambda message: message.text in ["➕ Mahsulot qo'shish", "✏️ Mahsulotni tahrirlash", "❌ Mahsulotni o'chirish"])
 async def product_controls_handler(message: Message, state: FSMContext):
@@ -467,10 +495,46 @@ async def set_availability(message: Message, state: FSMContext):
     if availability in ["ha", "yo'q"]:
         available = availability == "ha"
         await state.update_data(available=available)
+        if available:
+            await message.answer("Sotuvda qancha mahsulot bor? :")
+            await state.set_state(ProductFSM.waiting_for_stock)
+        else:
+            await state.update_data(in_stock=0)
+            await message.answer("Mahsulot holatini tanlang: ", reply_markup=(await show_quality_list()))
+            await state.set_state(ProductFSM.waiting_for_set_quality)
+    else:
+        await message.answer("Iltimos, faqat 'Ha' yoki 'Yo'q' deb javob bering.")
+ 
+@admin_router.message(StateFilter(ProductFSM.waiting_for_stock))
+async def set_in_stock(message: Message, state: FSMContext):
+    try:
+        in_stock = int(message.text.strip())
+        if in_stock > 0:
+            await state.update_data(in_stock=in_stock)
+            await message.answer("Mahsulot holatini tanlang: ", reply_markup=(await show_quality_list()))
+            await state.set_state(ProductFSM.waiting_for_set_quality)
+        else:
+            await message.answer("Admin, faqat 0 dan yuqori mavjud mahsulot sonni kiriting:")
+    except ValueError:
+        await message.answer("Admin, mahsulot sonini to'g'ri formatda kiriting (faqat raqam).")
+
+@admin_router.message(StateFilter(ProductFSM.waiting_for_set_quality))
+async def set_quality(message: Message, state: FSMContext):
+    quality_choices = {
+        "🆕 Yangi": "new",
+        "🔄 Yangilangan": "renewed",
+        "✨ Zo'r": "excellent",
+        "👍 Yaxshi": "good",
+        "✅ Qoniqarli": "acceptable"
+    }
+    selected_quality = message.text.strip()
+
+    if selected_quality in quality_choices:
+        await state.update_data(quality=quality_choices[selected_quality])
         await message.answer("Mahsulotning rasmini yuboring:")
         await state.set_state(ProductFSM.waiting_for_photo)
     else:
-        await message.answer("Iltimos, faqat 'Ha' yoki 'Yo'q' deb javob bering.")
+        await message.answer("Admin, faqat ko'rsatilgan sifatlardan tanlang.")
 
 @admin_router.message(StateFilter(ProductFSM.waiting_for_photo))
 async def set_photo(message: Message, state: FSMContext):
@@ -518,6 +582,8 @@ async def set_description_and_save(message: Message, state: FSMContext):
                 name=data["part_name"],
                 price=data["price"],
                 available=data["available"],
+                stock=data["in_stock"],
+                quality=data["quality"],
                 photo=File(f, name=os.path.basename(file_path)),
                 description=description,
             )
@@ -552,6 +618,7 @@ async def show_product_list(message: Message):
         resize_keyboard=True
     )
     return product_keyboard
+
 
 async def format_product_info(product):
     """
@@ -629,12 +696,13 @@ async def choose_field(message: Message, state: FSMContext):
         "Brandi": (ProductFSM.waiting_product_brand_edit,(await show_car_brands_list(message))),
         "Modeli": (ProductFSM.waiting_product_model_edit,(await show_car_models_list(message))),
         "Nomi": (ProductFSM.waiting_product_partname_edit, None),
-        "Narxi": (ProductFSM.waiting_product_price_edit, None),
+        "Narxi": (ProductFSM.waiting_product_price_edit, None), 
         "Mavjudligi": (ProductFSM.waiting_product_availability_edit, CONFIRM_KEYBOARD), 
+        "Soni": (ProductFSM.waiting_product_stock_edit, None), 
+        "Holati": (ProductFSM.waiting_product_quality_edit, (await show_quality_list())), 
         "Rasmi": (ProductFSM.waiting_product_photo_edit, None),
         "Tavsifi": (ProductFSM.waiting_product_description_edit, None),
     }
-
     if field_name in field_actions:
         next_state, markup = field_actions[field_name] 
         await state.set_state(next_state)
