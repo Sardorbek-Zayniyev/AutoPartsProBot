@@ -1,9 +1,9 @@
-from aiogram import Router, types
+from aiogram import Router, F
 import os
 import asyncio
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery, Message
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import FSInputFile
 from aiogram.filters.state import StateFilter
@@ -46,6 +46,55 @@ class CatalogFSM(StatesGroup):
     waiting_new_products_category = State()
     waiting_new_products = State()
     waiting_used_products = State()
+
+class ProductFSM(StatesGroup):
+
+    # category
+    waiting_get_category = State()
+    waiting_save_get_category = State()
+    waiting_show_categories_for_edition = State()
+    waiting_update_category = State()
+    waiting_save_updated_category = State()
+    waiting_show_categories_for_deletion = State()
+    waiting_category_delete_confirm = State()
+    waiting_delete_category = State()
+
+    # product adding   
+    waiting_show_category = State() 
+    waiting_set_category = State()
+    waiting_show_car_brand = State()
+    waiting_set_car_brand = State()
+    waiting_show_car_model = State()
+    waiting_set_car_model = State()
+    waiting_for_part_name = State()
+    waiting_for_price = State()
+    waiting_for_availability = State()
+    waiting_for_stock = State()
+    waiting_for_show_quality = State()
+    waiting_for_set_quality = State()
+    waiting_for_photo = State()
+    waiting_for_description = State()
+
+    # product editing
+    waiting_show_product_for_edit = State()
+    waiting_editing_product = State() 
+    waiting_choose_product_field = State()
+    waiting_product_category_edit = State()
+    waiting_product_brand_edit = State()
+    waiting_product_model_edit = State()
+    waiting_product_partname_edit = State()
+    waiting_product_price_edit = State()
+    waiting_product_availability_edit = State()
+    waiting_product_stock_edit = State()
+    waiting_product_quality_edit = State()
+    waiting_product_photo_edit = State()
+    waiting_product_description_edit = State()
+
+    # product deleting
+    waiting_show_product_for_delete = State()
+    waiting_product_delete_confirm = State()
+    waiting_product_delete = State()
+
 
 USER_MAIN_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -145,7 +194,7 @@ MAIN_CONTROLS_RESPONSES = {
 }
 
 
-@user_router.message(lambda message: message.text in MAIN_CONTROLS_RESPONSES)
+@user_router.message(F.text.in_(MAIN_CONTROLS_RESPONSES))
 async def main_controls_handler(message: Message, state: FSMContext):
     response = MAIN_CONTROLS_RESPONSES[message.text]
     await message.answer(response["text"], reply_markup=response["keyboard"])
@@ -168,27 +217,35 @@ async def format_product_info(product):
     brand_name = await sync_to_async(lambda: product.car_brand.name)()
     model_name = await sync_to_async(lambda: product.car_model.name)()
 
+    price_info = await sync_to_async(product.original_and_discounted_price)()
+    
+    if price_info["discounted_price"]:
+        price_text = (
+            f"💰 <b>Asl narxi:</b> <s>{price_info['original_price']} so'm</s>\n"
+            f"📉 <b>Chegirmali narx:</b> {price_info['discounted_price']} so'm 🔥"
+        )
+    else:
+        price_text = f"💲 <b>Narxi:</b> {price_info['original_price']} so'm"
+
     return (
-    f"<b>Mahsulot nomi: </b> {product.name}\n"
-    f"<b>Kategoriyasi:</b> {category_name}\n"
-    f"<b>Brandi:</b> {brand_name}\n"
-    f"<b>Modeli:</b> {model_name}\n"
-    f"<b>Narxi:</b> {product.price} so'm\n"
-    f"<b>Mavjudligi:</b> "
-    # f"{'Sotuvda yo\'q' if not product.available else (f'Sotuvda <b>{product.available_stock }</b> ta qoldi' if product.available_stock < 20 else f'Sotuvda <b>{product.available_stock}</b> ta bor')}\n"
-    f"{(
-        'Sotuvda yo‘q' if not product.available else 
-        f'Sotuvda qolmadi.' if product.available_stock == 0 else 
-        f'Sotuvda <b>{product.available_stock}</b> ta qoldi' if product.available_stock < 20 else 
-        f'Sotuvda <b>{product.available_stock}</b> ta bor'
-    )}\n"    f"<b>Holati:</b> {quality_choices[product.quality]}\n"
-
-    f"<b>Tavsifi</b>: {product.description or 'Yo\'q'}\n"
-)
-
+        f"🛠 <b>Mahsulot nomi:</b> {product.name}\n"
+        f"📦 <b>Kategoriyasi:</b> {category_name}\n"
+        f"🏷 <b>Brandi:</b> {brand_name}\n"
+        f"🚘 <b>Modeli:</b> {model_name}\n"
+        f"{price_text}\n"  
+        f"📊 <b>Mavjudligi:</b> "
+        f"{(
+            'Sotuvda yo‘q' if not product.available else 
+            f'Sotuvda qolmadi.' if product.available_stock == 0 else 
+            f'Sotuvda <b>{product.available_stock}</b> ta qoldi' if product.available_stock < 20 else 
+            f'Sotuvda <b>{product.available_stock}</b> ta bor'
+        )}\n"
+        f"🌟 <b>Holati:</b> {quality_choices[product.quality]}\n"
+        f"📝 <b>Tavsifi:</b> {product.description or 'Yo‘q'}\n"
+    )
 
 # Control handlers
-@user_router.message(lambda message: message.text in ["📂 Kategoriya", "🔤 Ehtiyot qism nomi", "🚘 Mashina brendi", "🚗 Mashina modeli"])
+@user_router.message(F.text.in_(("📂 Kategoriya", "🔤 Ehtiyot qism nomi", "🚘 Mashina brendi", "🚗 Mashina modeli")))
 async def search_controls_handler(message: Message, state: FSMContext):
     """
     Handle search control actions (category, part name, car brand, car model).
@@ -204,7 +261,7 @@ async def search_controls_handler(message: Message, state: FSMContext):
         await state.set_state(next_state)
     await handler_function(message, state)
 
-@user_router.message(lambda message: message.text in ["👁️ Savatni ko'rish", "♥️ Saqlangan mahsulotlar"])
+@user_router.message(F.text.in_(("👁️ Savatni ko'rish", "♥️ Saqlangan mahsulotlar")))
 async def cart_controls_handler(message: Message, state: FSMContext):
     """
     Handle cart control actions (view cart, clear cart)
@@ -219,7 +276,7 @@ async def cart_controls_handler(message: Message, state: FSMContext):
         await state.set_state(next_state)
     await handler_function(message, state)
 
-@user_router.message(lambda message: message.text in ["👤 Profil ma'lumotlari", "📍 Manzilni yangilash", "📱 Qo'shimcha raqam kiritish", "📝 Ismni yangilash"])
+@user_router.message(F.text.in_(("👤 Profil ma'lumotlari", "📍 Manzilni yangilash", "📱 Qo'shimcha raqam kiritish", "📝 Ismni yangilash")))
 async def profile_controls_handler(message: Message, state: FSMContext):
     actions = {
         "👤 Profil ma'lumotlari": (ProfileFSM.waiting_viewing_profile, show_profile),
@@ -232,7 +289,7 @@ async def profile_controls_handler(message: Message, state: FSMContext):
         await state.set_state(next_state)
     await handler_function(message, state)
 
-@user_router.message(lambda message: message.text in ["🔥 Aksiyalar", "🆕 Yangi", "🔄 B/U"])
+@user_router.message(F.text.in_(("🔥 Aksiyalar", "🆕 Yangi", "🔄 B/U")))
 async def catalog_controls_handler(message: Message, state: FSMContext):
     actions = {
         "🔥 Aksiyalar": (CatalogFSM.waiting_show_discounts, show_discounted_products_category),  
@@ -376,7 +433,6 @@ async def update_full_name(message: Message, state: FSMContext):
 
 #Profile update part end
 
-
 async def get_categories_keyboard(callback_data_prefix: str, back_button_text: str) -> InlineKeyboardMarkup:
     """
     Generates a keyboard of categories with a back button.
@@ -421,7 +477,7 @@ async def fetch_discounted_products():
     )()
 
     discounted_products = []
-    
+
     for discount in valid_discounts:
         products = await sync_to_async(lambda: list(discount.products.all()))()
         discounted_products.extend(products)
@@ -497,7 +553,7 @@ async def display_products_page(page_num, callback_query_or_message, products_wi
 
     product_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons + [pagination_buttons])
 
-    if isinstance(callback_query_or_message, types.CallbackQuery):
+    if isinstance(callback_query_or_message, CallbackQuery):
         await callback_query_or_message.message.edit_text(
             text=message_text, reply_markup=product_keyboard, parse_mode="HTML"
         )
@@ -511,11 +567,11 @@ async def display_products_page(page_num, callback_query_or_message, products_wi
 async def show_all_products_category(message: Message, state: FSMContext):
     await send_category_keyboard(message, "all_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('all_products_first_page:'))
+@user_router.callback_query(F.data.startswith('all_products_first_page:'))
 async def show_all_products_first_page(callback_query: CallbackQuery, state: FSMContext):
     await handle_product_page(callback_query, state, quality=None, callback_prefix="all_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('all_products_other_pages:'))
+@user_router.callback_query(F.data.startswith('all_products_other_pages:'))
 async def show_all_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
     await handle_other_pages(callback_query, state, quality=None, callback_prefix="all_products")
 
@@ -524,11 +580,11 @@ async def show_all_products_other_pages(callback_query: CallbackQuery, state: FS
 async def show_new_products_category(message: Message, state: FSMContext):
     await send_category_keyboard(message, "new_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('new_products_first_page:'))
+@user_router.callback_query(F.data.startswith('new_products_first_page:'))
 async def show_new_products_first_page(callback_query: CallbackQuery, state: FSMContext):
     await handle_product_page(callback_query, state, quality="new", callback_prefix="new_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('new_products_other_pages:'))
+@user_router.callback_query(F.data.startswith('new_products_other_pages:'))
 async def show_new_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
     await handle_other_pages(callback_query, state, quality="new", callback_prefix="new_products")
 
@@ -537,33 +593,31 @@ async def show_new_products_other_pages(callback_query: CallbackQuery, state: FS
 async def show_used_products_category(message: Message, state: FSMContext):
     await send_category_keyboard(message, "used_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('used_products_first_page:'))
+@user_router.callback_query(F.data.startswith('used_products_first_page:'))
 async def show_used_products_first_page(callback_query: CallbackQuery, state: FSMContext):
     quality__in="renewed, excellent, good, acceptable"
     await handle_product_page(callback_query, state, quality=quality__in, callback_prefix="used_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('used_products_other_pages:'))
+@user_router.callback_query(F.data.startswith('used_products_other_pages:'))
 async def show_used_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
     quality__in="renewed, excellent, good, acceptable"
     await handle_other_pages(callback_query, state, quality=quality__in, callback_prefix="used_products")
 
 #Discounted products
-
 @user_router.message(StateFilter(CatalogFSM.waiting_show_discounts))
 async def show_discounted_products_category(message: Message, state: FSMContext):
     await send_category_keyboard(message, "discounted_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('discounted_products_first_page:'))
+@user_router.callback_query(F.data.startswith('discounted_products_first_page:'))
 async def show_discounted_products_first_page(callback_query: CallbackQuery, state: FSMContext):
     await handle_product_page(callback_query, state, quality=None, callback_prefix="discounted_products")
 
-@user_router.callback_query(lambda c: c.data.startswith('discounted_products_other_pages:'))
+@user_router.callback_query(F.data.startswith('discounted_products_other_pages:'))
 async def show_discounted_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
     await handle_product_page(callback_query, state, quality=None, callback_prefix="discounted_products")
 
-
 #
-@user_router.callback_query(lambda c: c.data.startswith('product:') or c.data.startswith('item:'))
+@user_router.callback_query(F.data.in_(("product:", "item:")))
 async def show_single_product(callback_query: CallbackQuery, state: FSMContext):
     action = callback_query.data.split(':')[0]
     user = await get_user_from_db(callback_query.from_user.id)
@@ -595,7 +649,7 @@ async def show_single_product(callback_query: CallbackQuery, state: FSMContext):
 
     await callback_query.answer()
 
-@user_router.callback_query(lambda c: c.data == 'delete_message')
+@user_router.callback_query(F.data == 'delete_message')
 async def delete_message_handler(callback_query: CallbackQuery):
     await callback_query.message.delete()
 
@@ -679,9 +733,8 @@ async def handle_search_results(message: Message, products):
         await message.answer("Mahsulot Topilmadi")
         return
     products_with_numbers = [(index + 1, product) for index, product in enumerate(products)]
-    await display_products_page(1, message, products_with_numbers, None, len(products_with_numbers), 10, "search")
-
-
+    total_pages = ((len(products_with_numbers) + 9) // 10)
+    await display_products_page(1, message, products_with_numbers, None, total_pages, 10, "search")
 
 # Cart list
 @sync_to_async
@@ -733,7 +786,7 @@ async def update_cart_message(message: Message, user):
     except TelegramBadRequest:
         await message.answer(cart_text, parse_mode='HTMl', reply_markup=(await cart_keyboard(cart)))
 
-@user_router.callback_query(lambda c: c.data.startswith('increase_cart_item_quantity:') or c.data.startswith('decrease_cart_item_quantity:') or c.data.startswith('remove_item_from_cart:'))
+@user_router.callback_query(F.data_in(('increase_cart_item_quantity:', 'decrease_cart_item_quantity:', 'remove_item_from_cart')))
 async def update_cart_item_quantity(callback_query: CallbackQuery):
     action = callback_query.data.split(':')[0]
     item_id = int(callback_query.data.split(':')[1])
@@ -791,7 +844,7 @@ async def cart_keyboard(cart):
     else:
         return None
 
-@user_router.callback_query(lambda c: c.data == "clear_cart")
+@user_router.callback_query(F.data == "clear_cart")
 async def clear_cart(callback_query: CallbackQuery):
     user = await get_user_from_db(callback_query.from_user.id)
     cart = await sync_to_async(Cart.objects.filter(user=user).first)()
@@ -807,14 +860,13 @@ async def clear_cart(callback_query: CallbackQuery):
             # If the message is not modified, answer the callback with an appropriate message
             await callback_query.answer("Savat allaqachon bo'sh.")
 
-
 # Cart for each product
-@user_router.callback_query(lambda c: c.data == "view_cart")
+@user_router.callback_query(F.data == "view_cart")
 async def view_cart_callback(callback_query: CallbackQuery, state: FSMContext):
     user = await get_user_from_db(callback_query.from_user.id)
     await update_cart_message(callback_query.message, user)
 
-@user_router.callback_query(lambda c: c.data.startswith(('increase_product_quantity:', 'decrease_product_quantity:', 'delete_product:')))
+@user_router.callback_query(F.data.startswith(('increase_product_quantity:', 'decrease_product_quantity:', 'delete_product:')))
 async def update_product_quantity(callback_query: CallbackQuery):
     action, product_id = callback_query.data.split(':')
     product_id = int(product_id)
@@ -921,7 +973,6 @@ async def product_keyboard(product_id, cart_item=None, user=None):
         
     return InlineKeyboardMarkup(inline_keyboard=cart_item_keyboard)
 
-
 # Saved Items start
 @user_router.message(StateFilter(CartFSM.waiting_viewing_saved_items))
 async def show_saved_items_list(message: Message, state: FSMContext):
@@ -955,7 +1006,7 @@ async def saved_items_list_keyboard(saved_items=None):
     else:
         return None
 
-@user_router.callback_query(lambda c: c.data.startswith('remove_saved_item_from_list:') or c.data.startswith("clear_saved_items_list:"))
+@user_router.callback_query(F.data.startswith('remove_saved_item_from_list:', 'clear_saved_items_list:'))
 async def manage_saved_items_in_cart(callback_query: CallbackQuery):
     action, product_id = callback_query.data.split(':')
     user = await get_user_from_db(callback_query.from_user.id)
@@ -1001,7 +1052,7 @@ async def manage_saved_items_in_cart(callback_query: CallbackQuery):
         else:
             await callback_query.answer("Saqlanganlar ro'yxati bo'sh.")
 
-@user_router.callback_query(lambda c: c.data.startswith('save_item:') or c.data.startswith('remove_saved_item:'))
+@user_router.callback_query(F.data.startswith('save_item:', 'remove_saved_item:'))
 async def manage_saved_item_in_product(callback_query: CallbackQuery):
     action = callback_query.data.split(':')[0]
     product_id = int(callback_query.data.split(':')[1])
@@ -1035,10 +1086,8 @@ async def manage_saved_item_in_product(callback_query: CallbackQuery):
 # Saved Items end
 
 
-
 # Order functionlity
-
-@user_router.callback_query(lambda c: c.data.startswith('proceed_to_order:'))
+@user_router.callback_query(F.data.startswith('proceed_to_order:'))
 async def proceed_to_order(callback_query: CallbackQuery):
     user = await get_user_from_db(callback_query.from_user.id)
     cart_id = int(callback_query.data.split(':')[1])

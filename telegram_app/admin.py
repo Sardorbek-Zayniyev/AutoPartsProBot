@@ -74,10 +74,10 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ('category', 'car_brand', 'available')
     search_fields = ('name', 'car_brand__name', 'car_model__name')
     ordering = ('category', 'car_brand', 'car_model')
-    readonly_fields = ('id',)
+    readonly_fields = ('id', 'owner')
     fieldsets = (
         ('General Information', {
-            'fields': ('category', 'car_brand', 'car_model', 'name', 'description', 'quality',),
+            'fields': ('category', 'car_brand', 'car_model', 'name', 'description', 'quality', 'owner','updated_by'),
         }),
         ('Pricing and Availability', {
             'fields': ('price', 'available', 'stock', 'reserved_stock'),
@@ -138,10 +138,19 @@ class DiscountAdmin(admin.ModelAdmin):
     
     display_products.short_description = 'Products' 
 
-    list_display = ('display_products', 'percentage', 'start_date', 'end_date', 'is_active')
+    list_display = ('name', 'percentage', 'display_products', 'start_date', 'end_date', 'is_active')
     list_filter = ('is_active',)
     search_fields = ('products__name',) 
     ordering = ('-start_date',)
+    # readonly_fields = ('owner', 'updated_by')
+
+    # def save_model(self, request, obj, form, change):
+    #     """Admin panelda Discount yaratishda yoki yangilashda owner va updated_by maydonlarini avtomatik to‘ldirish."""
+    #     if not obj.pk: 
+    #         obj.owner = request.user  
+    #         obj.updated_by = request.user 
+    #     obj.updated_by = request.user 
+    #     super().save_model(request, obj, form, change)
 
 @admin.register(Promocode)
 class PromocodeAdmin(admin.ModelAdmin):

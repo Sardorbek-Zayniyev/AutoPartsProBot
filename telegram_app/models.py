@@ -1,5 +1,4 @@
 from django.db import models
-from decimal import Decimal
 from django.utils import timezone 
 
 class User(models.Model):
@@ -73,6 +72,12 @@ class CarModel(models.Model):
         return f"{self.name}"
 
 class Product(models.Model):
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="owned_products", editable=False
+    )
+    updated_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="updated_products"
+    )
     QUALITY_CHOICES = [
         ("new", "New"),
         ("renewed", "Renewed"),
@@ -103,11 +108,33 @@ class Product(models.Model):
     def save(self, *args, **kwargs):
         if self.name:
             self.name = self.name.title()
+
+        if not self.available:
+            self.stock = 0
+        elif self.available and self.stock == 0:
+            self.stock = 1
+
         if self.stock == 0:
             self.available = False
-        if self.stock > 0:
+        elif self.stock > 0:
             self.available = True
+
+        # if self.pk:  # If the instance already exists in DB
+        #     existing = self.__class__.objects.get(pk=self.pk)
+        #     if self.stock != existing.stock:  
+        #     # Stock was manually updated, determine availability
+        #         self.available = self.stock > 0  
+        # else:
+        # # If creating a new object, set stock based on availability
+        #     if self.available:
+        #         self.stock = 1
+        #     else:
+        #         self.stock = 0
+        
         super().save(*args, **kwargs)
+        if not self.available:
+            for discount in self.discounts.all():
+                discount.products.remove(self)
 
     @property
     def discounted_price(self):
@@ -115,6 +142,20 @@ class Product(models.Model):
         if active_discount:
             return round(self.price * (1 - active_discount.percentage / 100), 2)
         return self.price  
+    
+
+    def original_and_discounted_price(self):
+        """Asl narx va chegirma qilingan narxni tuple sifatida qaytaradi."""
+        active_discount = self.discounts.filter(
+            is_active=True, start_date__lte=timezone.now(), end_date__gte=timezone.now()
+        ).first()
+
+        if active_discount:
+            discounted_price = round(self.price * (1 - active_discount.percentage / 100), 2)
+            return {"original_price": self.price, "discounted_price": discounted_price}
+        
+        return {"original_price": self.price, "discounted_price": None} 
+
     
     @property
     def available_stock(self):
@@ -190,7 +231,14 @@ class SavedItem(models.Model):
         return f"{self.product.name}"
 
 class Discount(models.Model):
-    products = models.ManyToManyField(Product, related_name='discounts')
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="owned_discounts", editable=False, default=1
+    )
+    updated_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="updated_discounts",
+    )
+    name = models.CharField(max_length=255)
+    products = models.ManyToManyField(Product, related_name='discounts', blank=True, null=True)
     percentage = models.DecimalField(max_digits=5, decimal_places=2, help_text="Discount percentage (e.g. 10 for 10%)")
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
@@ -200,8 +248,27 @@ class Discount(models.Model):
         from django.utils import timezone
         return self.is_active and self.start_date <= timezone.now() <= self.end_date
 
+    def save(self, *args, **kwargs):
+        if not self.pk:  
+            if "user" in kwargs:  
+                self.owner = kwargs.pop("user")
+            if not self.name:
+                self.name = f"{self.start_date.strftime('%Y-%m-%d')} —> {self.end_date.strftime('%Y-%m-%d')}"
+        super().save(*args, **kwargs)
+        
+        if self.end_date < timezone.now():
+            self.is_active = False
+
+    @property
+    def start_date_normalize(self):
+        return self.start_date.strftime('%Y-%m-%d %H:%M')
+
+    @property
+    def end_date_normalize(self):
+        return self.end_date.strftime('%Y-%m-%d %H:%M')
+
     def __str__(self):
-        return f"{self.percentage}% off on {self.products.name}"
+        return f"{self.name}"
 
 class Promocode(models.Model):
     """Model representing promocodes."""
