@@ -1,11 +1,11 @@
 from config import *
 import asyncio
 from aiogram import Bot, Dispatcher
-from handlers import start
-from handlers import superadmin
-from handlers import admin
-from handlers import user
-from handlers import auth
+from telegram_bot.app import start
+from telegram_bot.app.superadmin import superadmin
+from telegram_bot.app.admin import admin_router as admin
+from telegram_bot.app.user import user_router as user
+from telegram_bot.app import auth
 
 # Set up logging
 import logging

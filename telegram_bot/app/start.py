@@ -1,12 +1,11 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from telegram_app.models import User
-from telegram_bot.app.handlers.superadmin import superadmin_controls_keyboard
-from handlers.auth import register_keyboard
-from handlers.utils import get_user_from_db
-from handlers.admin import ADMIN_MAIN_CONTROLS_KEYBOARD
-from handlers.user import USER_MAIN_CONTROLS_KEYBOARD
-# Create a router for the start handlers
+from telegram_bot.app.superadmin.superadmin import SUPERADMIN_CONTROLS_KEYBOARD
+from telegram_bot.app.auth import REGISTER_KEYBOARD
+from telegram_bot.app.utils import get_user_from_db
+from telegram_bot.app.admin.main_controls import ADMIN_MAIN_CONTROLS_KEYBOARD
+from telegram_bot.app.user.main_controls import USER_MAIN_CONTROLS_KEYBOARD
+
 start_router = Router()
 
 
@@ -21,7 +20,7 @@ async def start(message: types.Message):
     if existing_user and existing_user.role == 'Superadmin':
         await message.reply(
             "Xush kelibsiz, Super Admin!\nQuyidagilardan birini tanlang:",
-            reply_markup=superadmin_controls_keyboard
+            reply_markup=SUPERADMIN_CONTROLS_KEYBOARD
         )
     elif existing_user and existing_user.role == 'Admin':
         await message.reply(
@@ -40,5 +39,5 @@ async def start(message: types.Message):
             f"Assalomu alaykum! {
                 message.from_user.full_name} AutoPartPro botiga xush kelibsiz!\n\n"
             "Ro'yxatdan o'tish uchun quyidagi tugmani bosing.",
-            reply_markup=register_keyboard  # Show register button
+            reply_markup=REGISTER_KEYBOARD  # Show register button
         )

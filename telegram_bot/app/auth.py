@@ -2,13 +2,13 @@ from aiogram import Router, F, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 from aiogram.filters import Command
 from telegram_app.models import User
-from handlers.utils import get_user_from_db
+from telegram_bot.app.utils import get_user_from_db
 from asgiref.sync import sync_to_async
 
 # Create a router for auth handlers
 auth_router = Router()
 
-register_keyboard = ReplyKeyboardMarkup(
+REGISTER_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="📞 Telefon raqamini yuborish",
                         request_contact=True)],
@@ -39,7 +39,7 @@ async def start_register(message: types.Message):
     """
     await message.answer(
         "Ro'yxatdan o'tish uchun telefon raqamingizni yuborish tugmasini bosing.",
-        reply_markup=register_keyboard
+        reply_markup=REGISTER_KEYBOARD
     )
 
 
