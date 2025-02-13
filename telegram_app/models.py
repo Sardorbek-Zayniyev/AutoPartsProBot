@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone 
+import uuid
 
 class User(models.Model):
     USER = "User"
@@ -24,6 +25,7 @@ class User(models.Model):
     region = models.CharField(max_length=100, blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
     street_address = models.CharField(max_length=255, blank=True, null=True)
+    points = models.PositiveIntegerField(default=0)
     
 
     def __str__(self):
@@ -93,7 +95,7 @@ class Product(models.Model):
         CarModel, on_delete=models.CASCADE, related_name="products")
     name = models.CharField(max_length=255)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    available = models.BooleanField(default=True)
+    available = models.BooleanField(default=False)
     photo = models.ImageField(
         upload_to="product_photos/", blank=True, null=True)
     stock = models.PositiveIntegerField(default=0)
@@ -171,7 +173,7 @@ class Cart(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)  
-
+    
     def total_price(self):
         """Calculate the total price of the cart after all discounts."""
         total = sum(item.subtotal() for item in self.items.all())
@@ -237,15 +239,15 @@ class Discount(models.Model):
     updated_by = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="updated_discounts",
     )
-    name = models.CharField(max_length=255)
-    products = models.ManyToManyField(Product, related_name='discounts', blank=True, null=True)
+    name = models.CharField(max_length=255, null=True)
+    products = models.ManyToManyField(Product, related_name='discounts', blank=True)
     percentage = models.DecimalField(max_digits=5, decimal_places=2, help_text="Discount percentage (e.g. 10 for 10%)")
     start_date = models.DateTimeField()
     end_date = models.DateTimeField()
-    is_active = models.BooleanField(default=True)
+    is_active = models.BooleanField(default=False)
 
     def is_valid(self):
-        from django.utils import timezone
+        
         return self.is_active and self.start_date <= timezone.now() <= self.end_date
 
     def save(self, *args, **kwargs):
@@ -270,39 +272,13 @@ class Discount(models.Model):
     def __str__(self):
         return f"{self.name}"
 
-class Promocode(models.Model):
-    """Model representing promocodes."""
-    code = models.CharField(max_length=20, unique=True)
-    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2)  
-    valid_from = models.DateTimeField()
-    valid_until = models.DateTimeField()
-    is_active = models.BooleanField(default=True)
-    usage_limit = models.PositiveIntegerField(default=1) 
-
-    def __str__(self):
-        return self.code
-
-    def is_valid(self):
-        """Check if the promocode is valid based on its status and date range."""
-        from django.utils import timezone
-        return self.is_active and self.valid_from <= timezone.now() <= self.valid_until and self.usage_limit > 0
-
-class AppliedPromocode(models.Model):
-    """Model for tracking applied promocodes to a cart."""
-    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='applied_promocodes')
-    promocode = models.ForeignKey(Promocode, on_delete=models.CASCADE, related_name='applied_carts')
-    applied_at = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"Promocode {self.promocode.code} applied to Cart {self.cart.id}"
-
 class Order(models.Model):
     """Model representing a completed order."""
     cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='order')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='orders')
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
-    promocode = models.ForeignKey(Promocode, on_delete=models.SET_NULL, null=True, blank=True)
+    promocode = models.ForeignKey('Promocode', on_delete=models.SET_NULL, null=True, blank=True)
 
     STATUS_CHOICES = [
         ('Pending', 'Pending'),
@@ -345,6 +321,7 @@ class Order(models.Model):
         return f"Order {self.id} ({self.status})"
 
 class OrderItem(models.Model):
+
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
@@ -357,3 +334,92 @@ class OrderItem(models.Model):
         if not self.price:
             self.price = self.product.discounted_price  
         super().save(*args, **kwargs)
+
+class Reward(models.Model):
+    REWARD_TYPES = (
+        ("free_shipping", "Free Shipping"), 
+        ("gift", "Gift"),  
+        ("promocode", "Promocode"), 
+    )
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="owned_rewards", default=1
+    )
+    updated_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="updated_rewards",
+    )
+    reward_type = models.CharField(max_length=20, choices=REWARD_TYPES, default='gift')
+    name = models.CharField(max_length=255)
+    points_required = models.PositiveIntegerField()
+    description = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.name
+
+class Promocode(models.Model):
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="owned_promocodes", default=1
+    )
+    updated_by = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="updated_promocodes", default=1
+    )
+    reward = models.OneToOneField(
+        Reward, on_delete=models.CASCADE, related_name="promocode", null=True, blank=True
+    )
+    code = models.CharField(max_length=20, unique=True)
+    discount_percentage = models.DecimalField(max_digits=5, decimal_places=2)
+    valid_from = models.DateTimeField()
+    valid_until = models.DateTimeField()
+    is_active = models.BooleanField(default=False)
+    usage_limit = models.PositiveIntegerField(default=1)
+    used_count = models.PositiveIntegerField(default=0)
+    required_points = models.PositiveIntegerField(default=0) 
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            self.code = str(uuid.uuid4())[:8].upper()  
+        super().save(*args, **kwargs)
+    
+    def is_valid(self):
+        return (
+            self.is_active
+            and self.valid_from <= timezone.now() <= self.valid_until
+            and self.used_count < self.usage_limit
+        )
+    def redeem(self, user):
+        """Foydalanuvchi ball evaziga promokodni olishi"""
+        if user.points >= self.required_points:
+            user.points -= self.required_points
+            user.save()
+            return self.code
+        return None
+    
+    def __str__(self):
+        return self.code
+    
+class AppliedPromocode(models.Model):
+    """Model for tracking applied promocodes to a cart."""
+    cart = models.ForeignKey(Cart, on_delete=models.CASCADE, related_name='applied_promocodes')
+    promocode = models.ForeignKey(Promocode, on_delete=models.CASCADE, related_name='applied_carts')
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Promocode {self.promocode.code} applied to Cart {self.cart.id}"
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

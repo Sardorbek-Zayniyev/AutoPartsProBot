@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Category, Product, User, CarBrand, CarModel, Cart, CartItem, SavedItemList, SavedItem, Discount, Promocode, AppliedPromocode, Order, OrderItem
+from .models import Category, Product, User, CarBrand, CarModel, Cart, CartItem, SavedItemList, SavedItem, Discount, Promocode, AppliedPromocode, Order, OrderItem, Reward
 from django.db import transaction
 
 class ProductInline(admin.TabularInline):
@@ -178,3 +178,12 @@ class OrderItemAdmin(admin.ModelAdmin):
     readonly_fields = ('subtotal',)
     list_filter = ('order', 'product')
     search_fields = ('order__id', 'product__name')
+
+
+@admin.register(Reward)
+class RewardItemAdmin(admin.ModelAdmin):
+    list_display = ('name', 'points_required', 'description', 'is_active')
+    list_filter = ('name', 'points_required')
+    search_fields = ('name', 'is_active')
+
+

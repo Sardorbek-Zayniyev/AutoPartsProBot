@@ -9,7 +9,7 @@ from aiogram.types import FSInputFile
 from aiogram.filters.state import StateFilter
 from asgiref.sync import sync_to_async
 from handlers.utils import get_user_from_db
-from telegram_app.models import Category, CarBrand, CarModel, Product, Cart, CartItem, SavedItemList, SavedItem, Order, OrderItem, Discount
+from telegram_app.models import Category, CarBrand, CarModel, Product, Cart, CartItem, SavedItemList, SavedItem, Order, OrderItem, Discount, Reward
 from django.utils import timezone
 # Create a router for admin handlers
 user_router = Router()
@@ -23,6 +23,11 @@ class SearchFSM(StatesGroup):
     waiting_car_brand_search = State()
     waiting_get_car_model = State()
     waiting_car_model_search = State()
+
+class GamificationFSM(StatesGroup):
+    waiting_show_my_points = State()
+    waiting_show_my_aimed_rewards = State()
+    waiting_viewing_available_rewards = State()
 
 
 class CartFSM(StatesGroup):
@@ -96,11 +101,12 @@ class ProductFSM(StatesGroup):
     waiting_product_delete = State()
 
 
+
 USER_MAIN_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="🗂 Katalog"), KeyboardButton(text="🔎 Qidiruv")],
-        [KeyboardButton(text="📜 Mening buyurtmalarim"),
-         KeyboardButton(text="🛒 Savat")],
+        [KeyboardButton(text="📜 Mening buyurtmalarim"), KeyboardButton(text="🛒 Savat")],
+        [KeyboardButton(text="🏆 Mening ballarim"), KeyboardButton(text="🎁 Sovg'alar")],
         [KeyboardButton(text="👤 Profil"),  KeyboardButton(text="❓ Yordam")],
     ],
     resize_keyboard=True,
@@ -146,12 +152,6 @@ ORDERS_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
-PROFILE_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📍 Manzil"), KeyboardButton(text="⬅ Bosh menu")],
-    ],
-    resize_keyboard=True,
-)
 
 PROFILE_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
@@ -162,7 +162,14 @@ PROFILE_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
     resize_keyboard=True,
 )
 
+PRIZE_CONTROLS_KEYBOARD = ReplyKeyboardMarkup(
+    keyboard=[
+        [KeyboardButton(text="⭐ Mening erishgan yutuqlarim"), KeyboardButton(text="🎀 Mavjud sovg'alar")],
+        [KeyboardButton(text="⬅ Bosh menu")],
 
+    ],
+    resize_keyboard=True,
+)
 
 # Main control handlers
 MAIN_CONTROLS_RESPONSES = {
@@ -186,6 +193,14 @@ MAIN_CONTROLS_RESPONSES = {
         "text": "Profil sozlamalari uchun tugmalar:",
         "keyboard": PROFILE_CONTROLS_KEYBOARD
     },
+    "🏆 Mening ballarim": {
+        "text": "",
+        "keyboard": None
+    },
+    "🎁 Sovg'alar": {
+        "text": "Sovg'alar uchun tugmalar:",
+        "keyboard": PRIZE_CONTROLS_KEYBOARD,
+    },
     "⬅ Bosh menu": {
         "text": "Asosiy menuga xush kelibsiz!",
         "keyboard": USER_MAIN_CONTROLS_KEYBOARD,
@@ -202,47 +217,10 @@ async def main_controls_handler(message: Message, state: FSMContext):
         await state.clear()
 
 # Utils
-async def format_product_info(product):
-    """
-    Format product details for display.
-    """
-    quality_choices = {
-        "new": "Yangi 🆕 ",
-        "renewed": "Yangilangan 🔄 ",
-        "excellent": "Zo'r 👍  ",
-        "good": "Yaxshi ✨",
-        "acceptable": "Qoniqarli 👌"
-    }
-    category_name = await sync_to_async(lambda: product.category.name)()
-    brand_name = await sync_to_async(lambda: product.car_brand.name)()
-    model_name = await sync_to_async(lambda: product.car_model.name)()
 
-    price_info = await sync_to_async(product.original_and_discounted_price)()
-    
-    if price_info["discounted_price"]:
-        price_text = (
-            f"💰 <b>Asl narxi:</b> <s>{price_info['original_price']} so'm</s>\n"
-            f"📉 <b>Chegirmali narx:</b> {price_info['discounted_price']} so'm 🔥"
-        )
-    else:
-        price_text = f"💲 <b>Narxi:</b> {price_info['original_price']} so'm"
-
-    return (
-        f"🛠 <b>Mahsulot nomi:</b> {product.name}\n"
-        f"📦 <b>Kategoriyasi:</b> {category_name}\n"
-        f"🏷 <b>Brandi:</b> {brand_name}\n"
-        f"🚘 <b>Modeli:</b> {model_name}\n"
-        f"{price_text}\n"  
-        f"📊 <b>Mavjudligi:</b> "
-        f"{(
-            'Sotuvda yo‘q' if not product.available else 
-            f'Sotuvda qolmadi.' if product.available_stock == 0 else 
-            f'Sotuvda <b>{product.available_stock}</b> ta qoldi' if product.available_stock < 20 else 
-            f'Sotuvda <b>{product.available_stock}</b> ta bor'
-        )}\n"
-        f"🌟 <b>Holati:</b> {quality_choices[product.quality]}\n"
-        f"📝 <b>Tavsifi:</b> {product.description or 'Yo‘q'}\n"
-    )
+@user_router.callback_query(F.data == 'delete_message')
+async def delete_message_handler(callback_query: CallbackQuery):
+    await callback_query.message.delete()
 
 # Control handlers
 @user_router.message(F.text.in_(("📂 Kategoriya", "🔤 Ehtiyot qism nomi", "🚘 Mashina brendi", "🚗 Mashina modeli")))
@@ -300,6 +278,42 @@ async def catalog_controls_handler(message: Message, state: FSMContext):
     if next_state:
         await state.set_state(next_state)
     await handler_function(message, state)
+
+@user_router.message(F.text.in_(("🏆 Mening ballarim","⭐ Mening erishgan yutuqlarim", "🎀 Mavjud sovg'alar")))
+async def gamification_controls_handler(message: Message, state: FSMContext):
+    """
+    Handle gamification control actions (My scores, See rewards)
+    """
+
+    actions = {
+        "🏆 Mening ballarim": (GamificationFSM.waiting_show_my_points, show_points),
+        # "⭐ Mening erishgan yutuqlarim": (GamificationFSM.waiting_show_my_aimed_rewards, show_my_rewards),
+        "🎀 Mavjud sovg'alar": (GamificationFSM.waiting_viewing_available_rewards, show_rewards),
+    }
+    next_state, handler_function = actions[message.text]
+    if next_state:
+        await state.set_state(next_state)
+    await handler_function(message, state)
+
+
+@user_router.message(GamificationFSM.waiting_show_my_points)
+async def show_points(message: Message, state: FSMContext):
+    user = await get_user_from_db(message.from_user.id)
+    await message.answer(f"Sizda {user.points} ball to'plangan.")
+
+@user_router.message(GamificationFSM.waiting_viewing_available_rewards)
+async def show_rewards(message: Message, state: FSMContext):
+    rewards = await sync_to_async(list)(Reward.objects.filter(is_active=True))
+    if rewards:
+        rewards_text = "Mavjud sovg'alar:\n\n"
+        for reward in rewards:
+            rewards_text += f"🎁 {reward.name} - {reward.points_required} ball\n"
+        await message.answer(rewards_text, reply_markup=None)
+    else:
+        await message.answer("Hozircha mavjud sovg'alar yo'q.")
+
+
+
 
 #Profile update part start
 @user_router.message(StateFilter(ProfileFSM.waiting_viewing_profile))
@@ -430,8 +444,64 @@ async def update_full_name(message: Message, state: FSMContext):
     else:
         await message.answer("User topilmadi.")
     await state.clear()
-
 #Profile update part end
+async def send_keyboard_options(message: Message, items, prompt_text):
+    buttons = []
+    row = []
+    for i, item in enumerate(items):
+        row.append(KeyboardButton(text=item.name))
+        if (i + 1) % 2 == 0:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    back_button = KeyboardButton(text="⬅ Bosh menu")
+    buttons.append([back_button])
+    
+    keyboard = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
+    await message.answer(prompt_text, reply_markup=keyboard)
+
+async def format_product_info(product):
+    """
+    Format product details for display.
+    """
+    quality_choices = {
+        "new": "Yangi 🆕 ",
+        "renewed": "Yangilangan 🔄 ",
+        "excellent": "Zo'r 👍  ",
+        "good": "Yaxshi ✨",
+        "acceptable": "Qoniqarli 👌"
+    }
+    category_name = await sync_to_async(lambda: product.category.name)()
+    brand_name = await sync_to_async(lambda: product.car_brand.name)()
+    model_name = await sync_to_async(lambda: product.car_model.name)()
+
+    price_info = await sync_to_async(product.original_and_discounted_price)()
+    
+    if price_info["discounted_price"]:
+        price_text = (
+            f"💰 <b>Asl narxi:</b> <s>{price_info['original_price']} so'm</s>\n"
+            f"📉 <b>Chegirmali narx:</b> {price_info['discounted_price']} so'm 🔥"
+        )
+    else:
+        price_text = f"💲 <b>Narxi:</b> {price_info['original_price']} so'm"
+
+    return (
+        f"🛠 <b>Mahsulot nomi:</b> {product.name}\n"
+        f"📦 <b>Kategoriyasi:</b> {category_name}\n"
+        f"🏷 <b>Brandi:</b> {brand_name}\n"
+        f"🚘 <b>Modeli:</b> {model_name}\n"
+        f"{price_text}\n"  
+        f"📊 <b>Mavjudligi:</b> "
+        f"{(
+            'Sotuvda yo‘q' if not product.available else 
+            f'Sotuvda qolmadi.' if product.available_stock == 0 else 
+            f'Sotuvda <b>{product.available_stock}</b> ta qoldi' if product.available_stock < 20 else 
+            f'Sotuvda <b>{product.available_stock}</b> ta bor'
+        )}\n"
+        f"🌟 <b>Holati:</b> {quality_choices[product.quality]}\n"
+        f"📝 <b>Tavsifi:</b> {product.description or 'Yo‘q'}\n"
+    )
 
 async def get_categories_keyboard(callback_data_prefix: str, back_button_text: str) -> InlineKeyboardMarkup:
     """
@@ -465,6 +535,12 @@ async def fetch_products(category_id: int, quality: str = None):
 
     return await sync_to_async(list)(Product.objects.filter(**filter_params))
 
+async def fetch_object(model, **filter_kwargs):
+    try:
+        return await sync_to_async(model.objects.get)(**filter_kwargs)
+    except model.DoesNotExist:
+        return None
+
 async def fetch_discounted_products():
     valid_discounts = await sync_to_async(
         lambda: list(
@@ -484,8 +560,19 @@ async def fetch_discounted_products():
 
     return discounted_products
 
+async def handle_search_results(message: Message, products, state):
+    if not products:
+        await message.answer("Mahsulot Topilmadi")
+        return
+    await state.update_data(search_results=products)
+    
+    products_with_numbers = [(index + 1, product) for index, product in enumerate(products)]
+    total_pages = ((len(products_with_numbers) + 9) // 10)
+    await display_products_page(1, message, products_with_numbers, None, total_pages, 10, "search_product", state)
+
 async def handle_product_page(callback_query: CallbackQuery, state: FSMContext, quality: str, callback_prefix: str):
     category_id = int(callback_query.data.split(':')[1])
+        
     if callback_prefix == 'discounted_products':
         products = await fetch_discounted_products()
     else:
@@ -494,34 +581,48 @@ async def handle_product_page(callback_query: CallbackQuery, state: FSMContext, 
     if not products:
         await callback_query.message.answer("Mahsulotlar yo‘q.")
         return
-
+    
     products_with_numbers = [(index + 1, product) for index, product in enumerate(products)]
     products_per_page = 10
     total_pages = (len(products_with_numbers) + products_per_page - 1) // products_per_page
     current_page = 1
 
-    await display_products_page(current_page, callback_query, products_with_numbers, category_id, total_pages, products_per_page, callback_prefix)
+    await display_products_page(current_page, callback_query, products_with_numbers, category_id, total_pages, products_per_page, callback_prefix, state)
     await callback_query.answer()
 
-async def handle_other_pages(callback_query: CallbackQuery, state: FSMContext, quality: str, callback_prefix: str):
-    _, category_id, page_num = callback_query.data.split(':')
-    category_id = int(category_id)
-    page_num = int(page_num)
-
-    products = await fetch_products(category_id, quality)
+async def handle_product_other_pages(callback_query: CallbackQuery, state: FSMContext, quality: str, callback_prefix: str):
+    data_parts = callback_query.data.split(':')
+    if callback_prefix == "search_product":
+        if len(data_parts) != 2:
+            await callback_query.answer("Invalid callback data format.")
+            return
+        
+        page_num = int(data_parts[1])
+        state_data = await state.get_data()
+        products = state_data.get("search_results", [])
+        category_id = None  
+    else:
+        if len(data_parts) != 3:
+            await callback_query.answer("Invalid callback data format.")
+            return
+        
+        _, category_id, page_num = data_parts
+        category_id = int(category_id)
+        page_num = int(page_num)
+        products = await fetch_products(category_id, quality)
+    
     products_with_numbers = [(index + 1, product) for index, product in enumerate(products)]
-
     products_per_page = 10
     total_pages = (len(products_with_numbers) + products_per_page - 1) // products_per_page
-
-    await display_products_page(page_num, callback_query, products_with_numbers, category_id, total_pages, products_per_page, callback_prefix)
+    
+    await display_products_page(page_num, callback_query, products_with_numbers, category_id, total_pages, products_per_page, callback_prefix, state)
     await callback_query.answer()
 
-async def display_products_page(page_num, callback_query_or_message, products_with_numbers, category_id, total_pages, products_per_page, callback_prefix):
+async def display_products_page(page_num, callback_query_or_message, products_with_numbers, category_id, total_pages, products_per_page, callback_prefix, state):
     start_index = (page_num - 1) * products_per_page
     end_index = min(start_index + products_per_page, len(products_with_numbers))
     page_products = products_with_numbers[start_index:end_index]
-
+    
     message_text = (
         f"🔍 Umumiy natija: {len(products_with_numbers)} ta mahsulot topildi.\n\n"
         f"Sahifa natijasi: {start_index + 1}-{end_index}:\n\n"
@@ -538,19 +639,32 @@ async def display_products_page(page_num, callback_query_or_message, products_wi
         if len(row) == 5:
             product_buttons.append(row)
             row = []
-
     if row:
         product_buttons.append(row)
 
     pagination_buttons = []
-    if page_num > 1:
-        pagination_buttons.append(InlineKeyboardButton(
-            text="⬅️", callback_data=f"{callback_prefix}_other_pages:{category_id}:{page_num - 1}"))
-    pagination_buttons.append(InlineKeyboardButton(text="❌", callback_data="delete_message"))
-    if page_num < total_pages:
-        pagination_buttons.append(InlineKeyboardButton(
-            text="➡️", callback_data=f"{callback_prefix}_other_pages:{category_id}:{page_num + 1}"))
 
+    if total_pages > 1:
+        if page_num > 1:
+            if callback_prefix == "search_product":
+                pagination_buttons.append(InlineKeyboardButton(
+                    text="⬅️", callback_data=f"{callback_prefix}_other_pages:{page_num - 1}"))
+            else:
+                pagination_buttons.append(InlineKeyboardButton(
+                    text="⬅️", callback_data=f"{callback_prefix}_other_pages:{category_id}:{page_num - 1}"))
+
+        pagination_buttons.append(InlineKeyboardButton(text="❌", callback_data="delete_message"))
+
+        if page_num < total_pages:
+            if callback_prefix == "search_product":
+                pagination_buttons.append(InlineKeyboardButton(
+                    text="➡️", callback_data=f"{callback_prefix}_other_pages:{page_num + 1}"))
+            else:
+                pagination_buttons.append(InlineKeyboardButton(
+                    text="➡️", callback_data=f"{callback_prefix}_other_pages:{category_id}:{page_num + 1}"))
+    else:
+        pagination_buttons.append(InlineKeyboardButton(text="❌", callback_data="delete_message"))
+  
     product_keyboard = InlineKeyboardMarkup(inline_keyboard=product_buttons + [pagination_buttons])
 
     if isinstance(callback_query_or_message, CallbackQuery):
@@ -561,6 +675,7 @@ async def display_products_page(page_num, callback_query_or_message, products_wi
         await callback_query_or_message.answer(
             text=message_text, reply_markup=product_keyboard, parse_mode="HTML"
         )
+
 
 # search by all products
 @user_router.message(StateFilter(SearchFSM.waiting_all_products))
@@ -573,7 +688,11 @@ async def show_all_products_first_page(callback_query: CallbackQuery, state: FSM
 
 @user_router.callback_query(F.data.startswith('all_products_other_pages:'))
 async def show_all_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
-    await handle_other_pages(callback_query, state, quality=None, callback_prefix="all_products")
+    await handle_product_other_pages(callback_query, state, quality=None, callback_prefix="all_products")
+
+@user_router.callback_query(F.data.startswith('search_product_other_pages:'))
+async def show_all_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
+    await handle_product_other_pages(callback_query, state, quality=None, callback_prefix="search_product")
 
 # search by new products
 @user_router.message(StateFilter(CatalogFSM.waiting_new_products))
@@ -586,7 +705,7 @@ async def show_new_products_first_page(callback_query: CallbackQuery, state: FSM
 
 @user_router.callback_query(F.data.startswith('new_products_other_pages:'))
 async def show_new_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
-    await handle_other_pages(callback_query, state, quality="new", callback_prefix="new_products")
+    await handle_product_other_pages(callback_query, state, quality="new", callback_prefix="new_products")
 
 # search by new used products
 @user_router.message(StateFilter(CatalogFSM.waiting_used_products))
@@ -601,7 +720,7 @@ async def show_used_products_first_page(callback_query: CallbackQuery, state: FS
 @user_router.callback_query(F.data.startswith('used_products_other_pages:'))
 async def show_used_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
     quality__in="renewed, excellent, good, acceptable"
-    await handle_other_pages(callback_query, state, quality=quality__in, callback_prefix="used_products")
+    await handle_product_other_pages(callback_query, state, quality=quality__in, callback_prefix="used_products")
 
 #Discounted products
 @user_router.message(StateFilter(CatalogFSM.waiting_show_discounts))
@@ -616,9 +735,9 @@ async def show_discounted_products_first_page(callback_query: CallbackQuery, sta
 async def show_discounted_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
     await handle_product_page(callback_query, state, quality=None, callback_prefix="discounted_products")
 
-#
-@user_router.callback_query(F.data.in_(("product:", "item:")))
+@user_router.callback_query(F.data.startswith(("product:", "item:")))
 async def show_single_product(callback_query: CallbackQuery, state: FSMContext):
+    
     action = callback_query.data.split(':')[0]
     user = await get_user_from_db(callback_query.from_user.id)
     cart = await sync_to_async(Cart.objects.filter(user=user).first)()
@@ -649,9 +768,6 @@ async def show_single_product(callback_query: CallbackQuery, state: FSMContext):
 
     await callback_query.answer()
 
-@user_router.callback_query(F.data == 'delete_message')
-async def delete_message_handler(callback_query: CallbackQuery):
-    await callback_query.message.delete()
 
 # Search by part name
 @user_router.message(StateFilter(SearchFSM.waiting_get_part_name))
@@ -663,7 +779,7 @@ async def get_part_name(message: Message, state: FSMContext):
 async def part_name_search(message: Message, state: FSMContext):
     part_name = message.text.strip().title()
     products = await sync_to_async(list)(Product.objects.filter(name__icontains=part_name))
-    await handle_search_results(message, products)
+    await handle_search_results(message, products, state)
 
 # Search by car brand
 @user_router.message(StateFilter(SearchFSM.waiting_get_car_brand))
@@ -675,12 +791,12 @@ async def get_car_brand(message: Message, state: FSMContext):
 @user_router.message(StateFilter(SearchFSM.waiting_car_brand_search))
 async def car_brand_search(message: Message, state: FSMContext):
     car_brand_name = message.text.strip().upper()
-    car_brand = await fetch_object(CarBrand, name__iexact=car_brand_name)
+    car_brand = await fetch_object(CarBrand, name__icontains=car_brand_name)
     if not car_brand:
         await message.answer(f"Kechirasiz, {car_brand_name} brendi topilmadi.")
         return
     products = await sync_to_async(list)(Product.objects.filter(car_brand=car_brand))
-    await handle_search_results(message, products)
+    await handle_search_results(message, products, state)
 
 # Search by car model
 @user_router.message(StateFilter(SearchFSM.waiting_get_car_model))
@@ -692,7 +808,7 @@ async def get_car_model(message: Message, state: FSMContext):
 @user_router.message(StateFilter(SearchFSM.waiting_car_model_search))
 async def car_model_search(message: Message, state: FSMContext):
     car_model_name = message.text.strip().title()
-    car_models = await sync_to_async(list)(CarModel.objects.filter(name__iexact=car_model_name))
+    car_models = await sync_to_async(list)(CarModel.objects.filter(name__icontains=car_model_name))
     
     if not car_models:
         await message.answer(f"Kechirasiz, {car_model_name} modeli topilmadi.")
@@ -703,38 +819,9 @@ async def car_model_search(message: Message, state: FSMContext):
         car_model_products = await sync_to_async(list)(Product.objects.filter(car_model=car_model))
         products.extend(car_model_products)
 
-    await handle_search_results(message, products)
+    await handle_search_results(message, products, state)
 
 # Helper functions for searching
-async def fetch_object(model, **filter_kwargs):
-    try:
-        return await sync_to_async(model.objects.get)(**filter_kwargs)
-    except model.DoesNotExist:
-        return None
-
-async def send_keyboard_options(message: Message, items, prompt_text):
-    buttons = []
-    row = []
-    for i, item in enumerate(items):
-        row.append(KeyboardButton(text=item.name))
-        if (i + 1) % 2 == 0:
-            buttons.append(row)
-            row = []
-    if row:
-        buttons.append(row)
-    back_button = KeyboardButton(text="⬅ Bosh menu")
-    buttons.append([back_button])
-    
-    keyboard = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
-    await message.answer(prompt_text, reply_markup=keyboard)
-
-async def handle_search_results(message: Message, products):
-    if not products:
-        await message.answer("Mahsulot Topilmadi")
-        return
-    products_with_numbers = [(index + 1, product) for index, product in enumerate(products)]
-    total_pages = ((len(products_with_numbers) + 9) // 10)
-    await display_products_page(1, message, products_with_numbers, None, total_pages, 10, "search")
 
 # Cart list
 @sync_to_async
