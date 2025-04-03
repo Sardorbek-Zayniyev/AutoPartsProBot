@@ -1,4 +1,4 @@
-from config import *
+from .config import *
 import asyncio
 from aiogram import Bot, Dispatcher
 from telegram_bot.app import start
@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-dp.include_router(admin.admin_router)
-# dp.include_router(user.user_router)
-dp.include_router(auth.auth_router)
 dp.include_router(start.start_router)
+dp.include_router(admin.admin_router)
+dp.include_router(user.user_router)
+dp.include_router(auth.auth_router)
 dp.include_router(superadmin.superadmin_router)
 
 

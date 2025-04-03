@@ -1,7 +1,7 @@
 from telegram_app.models import User
 from asgiref.sync import sync_to_async
-
-
+from aiogram.filters import BaseFilter
+from aiogram.types import Message
 @sync_to_async
 def get_user_from_db(telegram_id):
     """
@@ -10,18 +10,22 @@ def get_user_from_db(telegram_id):
     user = User.objects.filter(telegram_id=telegram_id).first()
     return user
 
-
 @sync_to_async
-def set_as_admin(telegram_id):
-    user = User.objects.get(telegram_id=telegram_id)
-    user.role = User.ADMIN
-    user.save()
-    return user
+def get_admins():
+    return list(User.objects.filter(role__in=["Admin"]))
 
 
-@sync_to_async
-def set_as_user(telegram_id):
-    user = User.objects.get(telegram_id=telegram_id)
-    user.role = User.USER
-    user.save()
-    return user
+class IsAdminFilter(BaseFilter):
+    async def __call__(self, message: Message) -> bool:
+        user = await get_user_from_db(message.from_user.id)
+        return user and user.role == 'Admin'
+    
+class IsUserFilter(BaseFilter):
+    async def __call__(self, message: Message) -> bool:
+        user = await get_user_from_db(message.from_user.id)
+        return user and user.role == 'User'
+
+class IsSuperAdminFilter(BaseFilter):
+    async def __call__(self, message: Message) -> bool:
+        user = await get_user_from_db(message.from_user.id)
+        return user and user.role == 'Superadmin'

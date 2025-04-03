@@ -1,63 +1,35 @@
-from aiogram import Router, F, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
-from aiogram.filters import Command
+from aiogram import Router, F
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, Message
 from telegram_app.models import User
 from telegram_bot.app.utils import get_user_from_db
 from asgiref.sync import sync_to_async
+from aiogram.filters import BaseFilter
+from telegram_bot.app.user.main_controls import USER_PROFILE_CONTROLS_KEYBOARD
 
-# Create a router for auth handlers
+class IsNotRegisteredUser(BaseFilter):
+    async def __call__(self, message: Message) -> bool:
+        user = await get_user_from_db(message.from_user.id)
+        return user is None
+
 auth_router = Router()
 
 REGISTER_KEYBOARD = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="📞 Telefon raqamini yuborish",
-                        request_contact=True)],
-    ],
+    keyboard=[[KeyboardButton(text="📞 Telefon raqamini yuborish", request_contact=True)],],
     resize_keyboard=True,
     one_time_keyboard=True
 )
 
-# @auth_router.message(Command(commands=["register"]))
-# async def handle_register(message: types.Message):
-#     """
-#     Handles the /register command.
-#     """
-#     existing_user = await get_user_from_db(message.from_user.id)
-
-#     if existing_user:
-#         await message.answer(
-#             f"{message.from_user.full_name}, siz allaqachon ro'yxatdan o'tgansiz.",
-#             reply_markup=None  # Hide the keyboard
-#         )
-#     else:
-#         await start_register(message)
-
-
-async def start_register(message: types.Message):
-    """
-    Prompts the user to send their phone number for registration.
-    """
-    await message.answer(
-        "Ro'yxatdan o'tish uchun telefon raqamingizni yuborish tugmasini bosing.",
+async def start_register(message: Message):
+    await message.answer( "Ro'yxatdan o'tish uchun telefon raqamingizni yuborish tugmasini bosing. 👇",
         reply_markup=REGISTER_KEYBOARD
     )
 
-
-@auth_router.message(F.contact)
-async def handle_contact(message: types.Message):
-    """
-    Handles contact input during registration.
-    """
-
-    await register_user(message)
-
-
-async def register_user(message: types.Message):
+async def register_user(message: Message):
     """
     Handles the user registration process using the provided phone number.
     """
     contact = message.contact
-
+    clean_phone_number = message.contact.phone_number.lstrip("+")
     # Verify that the contact belongs to the sender
     if contact and contact.user_id == message.from_user.id:
         existing_user = await get_user_from_db(message.from_user.id)
@@ -66,23 +38,23 @@ async def register_user(message: types.Message):
             new_user = await sync_to_async(User.objects.create)(
                 telegram_id=message.from_user.id,
                 full_name=message.from_user.full_name,
-                phone_number=contact.phone_number,
+                phone_number=clean_phone_number,
             )
             await message.answer(
-                "Ro'yxatdan o'tdingiz!\nEndi sizning profilingiz tayyor.",
-                reply_markup=None  # Hide the keyboard
+                f"Tabrilaymiz {new_user.full_name} 😊\nRo'yxatdan muvaffaqqiyatli o'tdingiz!\nEndi sizning profilingiz tayyor.\n\nKelgusidagi qulayliklar uchun profil ma'lumotlaringizni to'ldirib olishni maslahat beramiz.",
+                reply_markup=USER_PROFILE_CONTROLS_KEYBOARD
             )
         else:
             await message.answer("Siz allaqachon ro'yxatdan o'tgansiz.")
     else:
         await message.answer(
-            'Bu profil sizga tegishli emas.\nIltimos, hozir yozayotgan telegram profilingiz raqamini yuboring.\n'
-            'Buning uchun quyidagi "📞 Telefon raqamini yuborish" tugmasini bosing.'
+            'Bu profil sizga tegishli emas❗️\n\nHurmatli foydalanuvchi, hozir yozayotgan telegram profilingiz raqamini yuboring.\n\n'
+            'Buning uchun quyidagi "📞 Telefon raqamini yuborish" tugmasini bosing 👇'
         )
 
-
-def include_auth_handlers(router: Router):
+@auth_router.message(IsNotRegisteredUser(), F.contact)
+async def handle_contact(message: Message):
     """
-    Includes auth handlers in the provided router.
+    Handles contact input during registration.
     """
-    router.include_router(auth_router)
+    await register_user(message)

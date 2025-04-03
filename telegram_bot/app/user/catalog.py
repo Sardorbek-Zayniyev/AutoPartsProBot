@@ -1,75 +1,60 @@
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton,CallbackQuery, Message
-from aiogram.filters.state import StateFilter
-from telegram_bot.app.utils import get_user_from_db
-from telegram_bot.app.user.product import send_category_keyboard,handle_product_page,handle_product_other_pages
-from telegram_bot.app.user.main_controls import CATALOG_CONTROLS_KEYBOARD
-catalog_router = Router()
+from aiogram.types import CallbackQuery, Message
+from telegram_bot.app.utils import IsUserFilter
+from telegram_bot.app.user.product import user_send_catalog_inline_keyboard
 
+user_catalog_router = Router()
 
-class CatalogFSM(StatesGroup):
-    waiting_show_discounts = State()
-    waiting_new_products_category = State()
-    waiting_new_products = State()
-    waiting_used_products = State()
+class UserCatalogFSM(StatesGroup):
+    user_waiting_get_new_products = State()
+    user_waiting_get_used_products = State()
+    user_waiting_get_discounted_products = State()
 
+# Search by new products
+@user_catalog_router.message(UserCatalogFSM.user_waiting_get_new_products)
+async def user_display_parent_category_selection_for_get_new_products_category(message: Message, state: FSMContext):
+    await user_send_catalog_inline_keyboard(message, "user_get_sub_categories_new_products", state, 'user_parent_category')
 
+@user_catalog_router.callback_query(IsUserFilter(), F.data.startswith('user_get_sub_categories_new_products_first_page:'))
+async def user_display_sub_category_selection_for_get_new_products(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    try:
+        id = int(callback_query.data.split(':')[1])
+        await state.update_data(parent_category_id=id)
+    except:
+        pass
+    await user_send_catalog_inline_keyboard(callback_query.message, "user_all_products", state, 'user_sub_category', quality="new")
 
+# Search by used products
+@user_catalog_router.message(UserCatalogFSM.user_waiting_get_used_products)
+async def user_display_parent_category_selection_for_get_used_products_category(message: Message, state: FSMContext):
+    await user_send_catalog_inline_keyboard(message, "user_get_sub_categories_used_products", state, 'user_parent_category')
 
-@catalog_router.message(F.text.in_(("🔥 Aksiyalar", "🆕 Yangi", "🔄 B/U")))
-async def catalog_controls_handler(message: Message, state: FSMContext):
-    actions = {
-        "🔥 Aksiyalar": (CatalogFSM.waiting_show_discounts, show_discounted_products_category),  
-        "🆕 Yangi": (CatalogFSM.waiting_new_products, show_new_products_category), 
-        "🔄 B/U": (CatalogFSM.waiting_used_products, show_used_products_category),
-    }
-    next_state, handler_function = actions[message.text]
-    if next_state:
-        await state.set_state(next_state)
-    await handler_function(message, state)
+@user_catalog_router.callback_query(IsUserFilter(), F.data.startswith('user_get_sub_categories_used_products_first_page:'))
+async def user_display_sub_category_selection_for_get_used_products(callback_query: CallbackQuery, state: FSMContext):
+    quality__in = "renewed, excellent, good, acceptable"
+    await callback_query.answer()
+    try:
+        id = int(callback_query.data.split(':')[1])
+        await state.update_data(parent_category_id=id)
+    except:
+        pass
+    await user_send_catalog_inline_keyboard(callback_query.message, "user_all_products", state, 'user_sub_category', quality=quality__in)
 
+# Search by discounted products
+@user_catalog_router.message(UserCatalogFSM.user_waiting_get_discounted_products)
+async def user_display_parent_category_selection_for_get_discounted_products_category(message: Message, state: FSMContext):
+    await user_send_catalog_inline_keyboard(message, "user_get_sub_categories_discounted_products", state, 'user_parent_category', quality='discounted_products')
 
+@user_catalog_router.callback_query(IsUserFilter(), F.data.startswith('user_get_sub_categories_discounted_products_first_page:'))
+async def user_display_sub_category_selection_for_get_used_products(callback_query: CallbackQuery, state: FSMContext):
+    await callback_query.answer()
+    try:
+        id = int(callback_query.data.split(':')[1])
+        await state.update_data(parent_category_id=id)
+    except:
+        pass
+    await user_send_catalog_inline_keyboard(callback_query.message, "user_all_products", state, 'user_sub_category', quality='discounted_products')
 
-
-# search by new products
-@catalog_router.message(StateFilter(CatalogFSM.waiting_new_products))
-async def show_new_products_category(message: Message, state: FSMContext):
-    await send_category_keyboard(message, "new_products")
-
-@catalog_router.callback_query(F.data.startswith('new_products_first_page:'))
-async def show_new_products_first_page(callback_query: CallbackQuery, state: FSMContext):
-    await handle_product_page(callback_query, state, quality="new", callback_prefix="new_products")
-
-@catalog_router.callback_query(F.data.startswith('new_products_other_pages:'))
-async def show_new_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
-    await handle_product_other_pages(callback_query, state, quality="new", callback_prefix="new_products")
-
-# search by new used products
-@catalog_router.message(StateFilter(CatalogFSM.waiting_used_products))
-async def show_used_products_category(message: Message, state: FSMContext):
-    await send_category_keyboard(message, "used_products")
-
-@catalog_router.callback_query(F.data.startswith('used_products_first_page:'))
-async def show_used_products_first_page(callback_query: CallbackQuery, state: FSMContext):
-    quality__in="renewed, excellent, good, acceptable"
-    await handle_product_page(callback_query, state, quality=quality__in, callback_prefix="used_products")
-
-@catalog_router.callback_query(F.data.startswith('used_products_other_pages:'))
-async def show_used_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
-    quality__in="renewed, excellent, good, acceptable"
-    await handle_product_other_pages(callback_query, state, quality=quality__in, callback_prefix="used_products")
-
-#Discounted products
-@catalog_router.message(StateFilter(CatalogFSM.waiting_show_discounts))
-async def show_discounted_products_category(message: Message, state: FSMContext):
-    await send_category_keyboard(message, "discounted_products")
-
-@catalog_router.callback_query(F.data.startswith('discounted_products_first_page:'))
-async def show_discounted_products_first_page(callback_query: CallbackQuery, state: FSMContext):
-    await handle_product_page(callback_query, state, quality=None, callback_prefix="discounted_products")
-
-@catalog_router.callback_query(F.data.startswith('discounted_products_other_pages:'))
-async def show_discounted_products_other_pages(callback_query: CallbackQuery, state: FSMContext):
-    await handle_product_page(callback_query, state, quality=None, callback_prefix="discounted_products")

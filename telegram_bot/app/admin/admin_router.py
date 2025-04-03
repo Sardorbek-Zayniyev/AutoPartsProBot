@@ -1,18 +1,25 @@
 from aiogram import Router
-from telegram_bot.app.admin.main_controls import main_controls_router
-from telegram_bot.app.admin.category import category_router
-from telegram_bot.app.admin.product import product_router
-from telegram_bot.app.admin.discount import discount_router
-from telegram_bot.app.admin.promocode import promocode_router
-from telegram_bot.app.admin.reward import reward_router
-
-
-
+from telegram_bot.app.admin.utils import admin_utils_router
+from telegram_bot.app.admin.main_controls import admin_main_controls_router
+from telegram_bot.app.admin.category import admin_category_router
+from telegram_bot.app.admin.product import admin_product_router
+from telegram_bot.app.admin.order import admin_order_router
+from telegram_bot.app.admin.promocode import admin_promocode_router
+from telegram_bot.app.admin.discount import admin_discount_router
+from telegram_bot.app.admin.reward import admin_reward_router
+from telegram_bot.app.admin.announcement import admin_announcement_router
+from telegram_bot.app.admin.users_products import admin_user_products_router
+from telegram_bot.app.admin.help import admin_help_router
 admin_router = Router()
 
-admin_router.include_router(main_controls_router)
-admin_router.include_router(category_router)
-admin_router.include_router(product_router)
-admin_router.include_router(discount_router)
-admin_router.include_router(promocode_router)
-admin_router.include_router(reward_router)
+admin_router.include_router(admin_main_controls_router)
+admin_router.include_router(admin_utils_router)
+admin_router.include_router(admin_category_router)
+admin_router.include_router(admin_product_router)
+admin_router.include_router(admin_order_router)
+admin_router.include_router(admin_promocode_router)
+admin_router.include_router(admin_discount_router)
+admin_router.include_router(admin_reward_router)
+admin_router.include_router(admin_announcement_router)
+admin_router.include_router(admin_user_products_router)
+admin_router.include_router(admin_help_router)

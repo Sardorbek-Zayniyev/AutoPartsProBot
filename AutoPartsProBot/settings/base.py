@@ -27,10 +27,10 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -38,6 +38,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'telegram_app',
+    'telegram_bot',
+    'debug_toolbar',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -48,6 +51,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware', 
 ]
 
 ROOT_URLCONF = 'AutoPartsProBot.urls'
@@ -95,12 +99,11 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Tashkent'
 
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
@@ -114,3 +117,97 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Jazzmin settings
+JAZZMIN_SETTINGS = {
+    "site_title": "AutoPartsProBot",
+    "site_header": "AutoPartsProBot",
+    "site_brand": "AutoPartsProBot",
+    "welcome_sign": "Welcome to AutoPartsProBot Admin Panel",
+    "copyright": "AutoPartsProBot © 2025",
+    "search_model": ["telegram_app.User", "telegram_app.Product", "telegram_app.Discount", "telegram_app.Order","telegram_app.Reward"],
+    "user_avatar": None,
+    "topmenu_links": [
+        {"name": "Home", "url": "admin:index", "permissions": ["auth.view_user"]},
+        {"model": "telegram_app.User"},
+    ],
+    "icons": {
+    "telegram_app.User": "fas fa-users",
+    "telegram_app.Category": "fas fa-sitemap",
+    "telegram_app.Product": "fas fa-cogs",
+    "telegram_app.Promocode": "fas fa-ticket-alt",
+    "telegram_app.CarBrand": "fas fa-car",
+    "telegram_app.CarModel": "fas fa-car-side",
+    "telegram_app.CartItem": "fas fa-cart-arrow-down",
+    "telegram_app.Cart": "fas fa-shopping-cart",
+    "telegram_app.Discount": "fas fa-percentage",
+    "telegram_app.OrderItem": "fas fa-box",
+    "telegram_app.Order": "fas fa-clipboard-list",
+    "telegram_app.PromocodeHistory": "fas fa-history",
+    "telegram_app.Promocode": "fas fa-ticket-alt",
+    "telegram_app.RewardHistory": "fas fa-gift",
+    "telegram_app.Reward": "fas fa-trophy",
+    "telegram_app.SavedItemList": "fas fa-list-alt",
+    "telegram_app.SavedItem": "fas fa-star",
+    "telegram_app.AppliedPromocode": "fa fa-tag",
+    "telegram_app.Question": "fa fa-question-circle",
+    },
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "hide_apps": ['auth'],
+    "hide_models": [],
+    "order_with_respect_to": ["telegram_app.User", "telegram_app.Category", "telegram_app.Product"],
+    # "custom_css": "admin/css/custom.css",
+    # "custom_js": "admin/js/custom.js",
+    "show_ui_builder": True,
+}
+
+#Celery settings
+from celery.schedules import crontab
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Asia/Tashkent'
+
+CELERY_BEAT_SCHEDULE = {
+    'clear_expired_reservations': {
+        'task': 'telegram_bot.tasks.clear_expired_reservations', 
+        'schedule': 60.0, 
+    },
+    'warn_cart_expiration': {
+        'task': 'telegram_bot.tasks.warn_cart_expiration',
+        'schedule': 30.0, 
+    },
+    'notify_admins_pending_products': {
+        'task': 'telegram_bot.tasks.notify_admins_pending_products',
+        'schedule': 21600.0, 
+        # 'schedule': crontab(hour='9,12,15', minute=0),  
+        # 'schedule': crontab(hour=7, minute=[37, 38, 39]),
+        # 'schedule': crontab(minute='*') 
+    },
+}
+
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BEAT_SCHEDULER = 'redbeat.RedBeatScheduler'
+CELERY_BEAT_REDIS_URL = 'redis://localhost:6379/0'
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+    },
+}
+
+

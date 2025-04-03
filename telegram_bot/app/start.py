@@ -8,7 +8,6 @@ from telegram_bot.app.user.main_controls import USER_MAIN_CONTROLS_KEYBOARD
 
 start_router = Router()
 
-
 @start_router.message(Command(commands=['start']))
 async def start(message: types.Message):
     """
